@@ -102,9 +102,30 @@ judge opening the link after a quiet night would hit. The fix is the Starter
 plan, which does not sleep. Until then `.github/workflows/keep-warm.yml` pings
 it, which is a mitigation and not a fix.
 
-Still to do: detecting context-ending utterances ("the cold snap is over") on the
-extraction path rather than calling `end_context` directly, the add-on manifest
-and icons, and a deployment.
+### Multi-tenancy
+
+Every authenticated subject gets its own household. A single shared house was
+fine while the only client was a test and wrong the moment the service was
+reachable: two people opening the demo wrote into the same home, and the live
+deployment had already collected other people's thermostats before anyone
+noticed. In a real add-on the subject arrives from account linking, and the same
+leak would be between actual families.
+
+### The listing
+
+`addon.json` is written and validated. Six icon sizes and the carousel image are
+generated from SVG in `assets/src/` and served by the service itself, so the
+listing depends on no second host that could be down or parked during judging.
+`/privacy` and `/terms` are served from here too. Every limit Amazon imposes is
+pinned by `tests/test_manifest.py`, because each one is a silent rejection
+rather than a build error.
+
+### Still to do
+
+Only `alexa-ai deploy` and the demo video, both of which need an Amazon
+developer account. The model write path also still wants a real key; it is
+exercised against a protocol stub in `tests/test_extract.py`, which proves the
+code handles a model correctly but not that a model writes good beliefs.
 
 ## Built for
 Build, Ship, Shape: Amazon Developer Hackathon 2026, Alexa+ track. Deadline 23 Oct 2026.
