@@ -123,6 +123,7 @@
 <header>
   <div class="mark">Hearth<span>.</span></div>
   <div class="tag" id="proto">mcp 2025-11-25</div>
+  <div class="tag" id="auth">connecting</div>
   <div class="strap">The household memory an agent can be trusted with. Who said it,
     when, whether it still holds, and why it won.</div>
 </header>
@@ -271,11 +272,86 @@ async function retire(id) {
 $("#send").onclick = say;
 $("#said").addEventListener("keydown", e => { if (e.key === "Enter") say(); });
 
+// --- getting in --------------------------------------------------------
+// The console holds no privileged back door. It authenticates the same way an
+// Alexa+ client does, with the OAuth 2.1 authorization code flow and PKCE, in
+// the browser. That is not ceremony: the first version minted a token from a
+// loopback-only endpoint, which was safe but meant the deployed console showed
+// a judge a 403 instead of the product. This works for anyone, from anywhere,
+// and exercises the real auth path every time the page loads.
+
+const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
+  .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+async function challengeFor(verifier) {
+  return b64url(await crypto.subtle.digest("SHA-256",
+    new TextEncoder().encode(verifier)));
+}
+
+function randomVerifier() {
+  const a = new Uint8Array(48);
+  crypto.getRandomValues(a);
+  return b64url(a.buffer);
+}
+
+async function connect() {
+  const here = location.origin + location.pathname;
+
+  // Coming back from /authorize with a code.
+  const code = new URLSearchParams(location.search).get("code");
+  if (code) {
+    const verifier = sessionStorage.getItem("hearth_verifier") || "";
+    history.replaceState({}, "", here);               // keep the code out of the bar
+    const r = await fetch("/token", {
+      method: "POST",
+      headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      body: new URLSearchParams({
+        grant_type: "authorization_code", code, code_verifier: verifier,
+        client_id: CLIENT_ID, redirect_uri: here, resource: RESOURCE}),
+    });
+    const t = await r.json();
+    if (t.access_token) {
+      sessionStorage.setItem("hearth_token", t.access_token);
+      return t.access_token;
+    }
+    throw new Error(t.error_description || t.error || "token exchange failed");
+  }
+
+  // Already holding one from earlier in this tab.
+  const saved = sessionStorage.getItem("hearth_token");
+  if (saved) {
+    const ok = await fetch("/api/state", {headers: {Authorization: "Bearer " + saved}});
+    if (ok.status !== 401) return saved;
+    sessionStorage.removeItem("hearth_token");
+  }
+
+  const verifier = randomVerifier();
+  sessionStorage.setItem("hearth_verifier", verifier);
+  const q = new URLSearchParams({
+    client_id: CLIENT_ID, redirect_uri: here, response_type: "code",
+    code_challenge: await challengeFor(verifier), code_challenge_method: "S256",
+    resource: RESOURCE, scope: "household.read household.write"});
+  location.href = "/authorize?" + q;
+  return null;
+}
+
+let CLIENT_ID = "hearth-dev-client", RESOURCE = location.origin + "/mcp";
+
 (async () => {
-  const t = await (await fetch("/api/console-token")).json();
-  if (t.error) { document.body.innerHTML =
-    `<p style="padding:40px;color:#a4907f">${t.error}</p>`; return; }
-  TOKEN = t.access_token;
-  render(await api("/api/state"));
+  try {
+    const meta = await (await fetch("/.well-known/oauth-protected-resource")).json();
+    RESOURCE = meta.resource || RESOURCE;
+    const asm = await (await fetch("/.well-known/oauth-authorization-server")).json();
+    CLIENT_ID = asm.client_id_hint || CLIENT_ID;
+
+    TOKEN = await connect();
+    if (!TOKEN) return;                                // redirecting to /authorize
+    $("#auth").textContent = "oauth 2.1 · pkce s256";
+    render(await api("/api/state"));
+  } catch (e) {
+    document.body.innerHTML =
+      `<p style="padding:40px;color:#a4907f;font:14px system-ui">
+         Could not connect: ${String(e.message || e)}</p>`;
+  }
 })();
 </script>

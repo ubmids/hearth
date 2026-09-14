@@ -93,6 +93,10 @@ class AuthServer:
             "grant_types_supported": ["authorization_code"],
             "token_endpoint_auth_methods_supported": ["none"],  # public client + PKCE
             "code_challenge_methods_supported": ["S256"],       # required, must include S256
+            # Dynamic Client Registration is not supported by Alexa+, so the
+            # client id has to come from somewhere. Publishing it here lets a
+            # client discover it instead of it being hardcoded in three places.
+            "client_id_hint": self.client_id,
         }
 
     # --- authorization code flow ------------------------------------------

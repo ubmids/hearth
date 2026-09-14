@@ -62,6 +62,13 @@ async def _keepalive(url: str, every: int, log=print):
 
 
 def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> FastAPI:
+    # Without a path the household lives in memory and a restart wipes it. That
+    # is wrong for something whose entire pitch is that it remembers who said
+    # what and when: a judge who adds a belief, comes back after the instance
+    # recycles, and finds an empty house has been shown the opposite of the
+    # product. The filesystem here is still ephemeral across deploys, which is
+    # honest for a demo and noted in the README.
+    data_path = data_path or os.getenv("HEARTH_DATA") or None
     issuer = (issuer or os.getenv("HEARTH_ISSUER", "http://localhost:8000")).rstrip("/")
     resource = (resource or os.getenv("HEARTH_RESOURCE", f"{issuer}/mcp")).rstrip("/")
 
