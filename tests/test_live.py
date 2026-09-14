@@ -9,6 +9,7 @@ the same requirements against a real URL, over real TLS, from wherever you are.
 """
 import base64
 import hashlib
+import http.client
 import json
 import secrets
 import statistics
@@ -134,17 +135,34 @@ def main():
                       "params": {"name": "remember",
                                  "arguments": {"said": "keep it at 19",
                                                "speaker": "Dad"}}}, auth)
+        # Measured over ONE kept-alive connection, which is how a real MCP
+        # client talks to a Streamable HTTP server. Opening a fresh TCP and TLS
+        # connection per request adds two full round trips of pure handshake,
+        # which from a distant client is most of a second and says nothing about
+        # the server. The first version of this test made exactly that mistake.
+        parsed = urllib.parse.urlparse(BASE)
+        conn = (http.client.HTTPSConnection if parsed.scheme == "https"
+                else http.client.HTTPConnection)(parsed.netloc, timeout=30)
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": "whats_true",
+                                      "arguments": {"domain": "thermostat",
+                                                    "slot": "target"}}})
+        hdrs = {"Content-Type": "application/json", **auth}
+        conn.request("POST", "/mcp", body=body, headers=hdrs)   # warm the socket
+        conn.getresponse().read()
+
         samples = []
         for _ in range(20):
             t0 = time.perf_counter()
-            post("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                          "params": {"name": "whats_true",
-                                     "arguments": {"domain": "thermostat",
-                                                   "slot": "target"}}}, auth)
+            conn.request("POST", "/mcp", body=body, headers=hdrs)
+            conn.getresponse().read()
             samples.append((time.perf_counter() - t0) * 1000)
+        conn.close()
         p50, worst = statistics.median(samples), max(samples)
         check("warm round trip under 500ms", worst < 500,
-              f"p50 {p50:.0f}ms, worst {worst:.0f}ms")
+              f"p50 {p50:.0f}ms, worst {worst:.0f}ms, one kept-alive connection")
+        print(f"        note: measured from this machine. Alexa+ calls from AWS, "
+              f"much closer to the service than you are.")
 
     print()
     if failures:

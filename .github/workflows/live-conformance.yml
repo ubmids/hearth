@@ -1,0 +1,34 @@
+# Runs the live conformance and latency suite from a US-based GitHub runner.
+#
+# This exists because latency measured from the author's machine in Lagos is not
+# the number the requirement is about. Alexa+ calls the server from AWS, a short
+# hop from the deployment; the author is roughly 12,000km away and pays ~145ms
+# of round trip before the server has done anything. A US runner is a far closer
+# stand-in for where the caller actually sits, and CI output is evidence rather
+# than a claim.
+name: live conformance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "0 7 * * *"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Where is this runner
+        run: curl -s https://ipinfo.io/json | head -c 300; echo
+      - name: In-process suites
+        run: |
+          python3 tests/test_contest.py
+          pip install -q fastapi httpx
+          python3 tests/test_conformance.py
+      - name: Against the deployment
+        run: python3 tests/test_live.py https://hearth-sh3u.onrender.com
