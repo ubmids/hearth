@@ -7,7 +7,9 @@ would do by default, which is why Hearth implements the transport directly.
 import os
 import re
 import secrets
+import shutil
 import sys
+import tempfile
 import time
 import urllib.parse
 
@@ -15,7 +17,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi.testclient import TestClient
 
+from hearth import app as app_module
 from hearth.app import create_app
+from hearth.mcp import PROTOCOL_VERSION
 from hearth.oauth import AUTH_CODE_TTL, TOKEN_TTL, AuthServer, s256
 
 ISSUER = "https://hearth.test"
@@ -44,6 +48,7 @@ def test_401_has_no_www_authenticate():
     r = c.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
     assert r.status_code == 401
     assert "www-authenticate" not in {k.lower() for k in r.headers}, dict(r.headers)
+    assert r.json()["error"] == "unauthorized", r.text
     print("PASS 401 without WWW-Authenticate")
 
 
@@ -72,6 +77,9 @@ def test_bearer_in_query_string_is_refused():
                json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
                headers={"Authorization": f"Bearer {tok}"})
     assert r.status_code == 400, r.status_code
+    # A client has to be able to tell this apart from a bad request body, so
+    # the code matters as much as the status.
+    assert r.json()["error"] == "invalid_request", r.text
     print("PASS bearer in query string refused")
 
 
@@ -914,6 +922,608 @@ def test_the_tools_say_plainly_when_there_is_nothing_to_say():
     assert said_by(c, tok, "whats_true", domain="thermostat",
                    slot="target").startswith("19"), "an unnamed context ended real beliefs"
     print("PASS the tools say plainly when there is nothing to say")
+
+
+
+# --- the HTTP surface, given the same treatment ------------------------------
+# app.py had never been mutation tested. Everything below is a survivor: a
+# change to the running service that this suite would have waved through, on
+# endpoints that are either security boundaries, the thing a judge opens, or
+# the thing the add-on listing points at.
+
+
+def console(c, tok, method, path, **body):
+    """The console API always speaks bearer, and always answers with state."""
+    head = {"Authorization": f"Bearer {tok}"}
+    if method == "GET":
+        return c.get(path, headers=head)
+    return c.post(path, json=body, headers=head)
+
+
+def test_the_seeded_household_has_the_shape_the_demo_needs():
+    """The demo is the submission. A judge opening the console sees this house
+    before anyone says a word, and every sentence in the walkthrough depends on
+    its shape: one adult who owns the thermostat, one who does not, and a child
+    who owns their own room. Nothing checked any of it, so the roles and the
+    grants could have gone empty and the demo would have quietly become a
+    first-past-the-post memory store like every other entry.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    by_name = {m.name: m for m in app.state.household.members.values()}
+    assert set(by_name) == {"Dad", "Mum", "Ada"}, sorted(by_name)
+    assert by_name["Dad"].role == "adult" and by_name["Dad"].grants == ["thermostat"]
+    assert by_name["Mum"].role == "adult" and by_name["Mum"].grants == ["shopping"]
+    assert by_name["Ada"].role == "child" and by_name["Ada"].grants == ["bedroom.ada"]
+
+    # And the grant has to still decide the contest, which is the only reason
+    # any of it is there. Mum speaks last; Dad owns the thermostat.
+    said_by(c, tok, "remember", said="keep it at 19 in here", speaker="Dad")
+    said_by(c, tok, "remember", said="make it 24", speaker="Mum")
+    truth = said_by(c, tok, "whats_true", domain="thermostat", slot="target")
+    assert truth.startswith("19"), truth
+    print("PASS the seeded household is the one the demo walks through")
+
+
+def test_the_protected_resource_document_is_served_at_both_paths():
+    """RFC 9728 clients derive the metadata URL from the resource by inserting
+    the well-known segment before the path, so a resource of /mcp is looked up
+    at /.well-known/oauth-protected-resource/mcp. Hearth serves both spellings
+    and only the bare one was ever fetched, so the suffixed route could have
+    been deleted and the discovery Alexa+ performs would have 404'd.
+    """
+    c, _ = client()
+    bare = c.get("/.well-known/oauth-protected-resource")
+    suffixed = c.get("/.well-known/oauth-protected-resource/mcp")
+    assert suffixed.status_code == 200, suffixed.status_code
+    assert suffixed.json() == bare.json(), suffixed.json()
+    assert suffixed.json()["resource"] == RESOURCE
+    print("PASS the protected resource document is served at both paths")
+
+
+def test_a_body_that_is_not_a_json_rpc_request_is_refused_not_crashed():
+    """A REAL BUG, found here. `"hello"`, `42` and `null` are all valid JSON and
+    none of them is a request object. The handler went straight to
+    `payload.get` and raised, so the endpoint answered a malformed body with a
+    500 rather than the Invalid Request the spec names for exactly this case.
+    A 500 from the MCP endpoint is the worst thing a conformance reviewer can
+    find, because it is indistinguishable from the server being broken.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    head = {"Authorization": f"Bearer {tok}"}
+
+    broken = c.post("/mcp", content="{not json at all", headers=head)
+    assert broken.status_code == 400, broken.status_code
+    assert broken.json()["jsonrpc"] == "2.0", broken.json()
+    assert broken.json()["id"] is None, broken.json()
+    assert broken.json()["error"]["code"] == -32700, broken.json()
+    assert "message" in broken.json()["error"], broken.json()
+
+    for body in ('"hello"', "42", "null", "true"):
+        r = c.post("/mcp", content=body, headers=head)
+        assert r.status_code == 400, (body, r.status_code, r.text)
+        assert r.json() == {"jsonrpc": "2.0", "id": None,
+                            "error": {"code": -32600,
+                                      "message": "Invalid Request"}}, (body, r.text)
+
+    # The token endpoint takes a raw body too, and decodes it by hand.
+    bad_bytes = c.post("/token", content=b"\xff\xfe grant_type=x")
+    assert bad_bytes.status_code == 400, bad_bytes.status_code
+    print("PASS a malformed body is an error, not a crash")
+
+
+def test_a_session_id_is_issued_and_an_unknown_one_is_refused():
+    """The session header is how Streamable HTTP keeps a conversation together.
+    Nothing read it back, so the whole branch could have gone: a client could
+    have presented any session id, including one from a server restart ago, and
+    been served as though it were live.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    init = rpc(c, tok, "initialize", {"protocolVersion": PROTOCOL_VERSION})
+    sid = init.headers.get("mcp-session-id")
+    assert sid, dict(init.headers)
+
+    assert rpc(c, tok, "ping", sid=sid).status_code == 200
+    stale = rpc(c, tok, "ping", sid="00000000000000000000000000000000")
+    assert stale.status_code == 404, stale.status_code
+    assert stale.json()["error"] == "no such session", stale.text
+    print("PASS a session id is issued, and an unknown one is refused")
+
+
+def test_server_timing_reports_the_time_the_request_actually_took():
+    """The 500ms budget is the requirement Alexa+ states, and this header is
+    what Hearth reports about itself. A header that reports a number from a
+    different unit, or the wrong side of a subtraction, is worse than no header:
+    it is a latency claim in the submission that nothing checks.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    t0 = time.perf_counter()
+    r = rpc(c, tok, "tools/call", {"name": "remember",
+                                   "arguments": {"said": "keep it at 19",
+                                                 "speaker": "Dad"}})
+    wall_ms = (time.perf_counter() - t0) * 1000
+    m = re.fullmatch(r'app;dur=([0-9.]+);desc="hearth"', r.headers["server-timing"])
+    assert m, r.headers.get("server-timing")
+    dur = float(m.group(1))
+    # Milliseconds, measured over this request: positive, and never longer than
+    # the round trip the client just timed, since it is a slice of it.
+    assert 0 < dur <= wall_ms, (dur, wall_ms)
+    print(f"PASS Server-Timing reports {dur:.3f}ms of a {wall_ms:.1f}ms round trip")
+
+
+def test_a_batch_is_answered_as_a_batch():
+    """JSON-RPC allows an array, Alexa+ may send one, and nothing had ever sent
+    one. The notification filter inside it is the part that matters: a
+    notification must not produce a response object, and a batch that is nothing
+    but notifications must answer 202 with no body at all.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    head = {"Authorization": f"Bearer {tok}",
+            "Accept": "application/json, text/event-stream"}
+
+    r = c.post("/mcp", json=[{"jsonrpc": "2.0", "id": 1, "method": "ping"},
+                             {"jsonrpc": "2.0", "method": "notifications/ready"},
+                             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}],
+               headers=head)
+    assert r.status_code == 200, r.status_code
+    out = r.json()
+    assert [x["id"] for x in out] == [1, 2], out
+    assert "tools" in out[1]["result"], out[1]
+
+    quiet = c.post("/mcp", json=[{"jsonrpc": "2.0", "method": "notifications/ready"}],
+                   headers=head)
+    assert quiet.status_code == 202, quiet.status_code
+    print("PASS a batch is answered as a batch, and notifications stay silent")
+
+
+def test_console_tokens_are_never_handed_to_a_remote_caller():
+    """The one place Hearth mints a credential without being asked for one. It
+    is loopback only because an operator running it on their own machine should
+    not have to paste a token to see their own house, and the deployed service
+    must hand out nothing at all. Every guard in it was unexercised: the host
+    list, the refusal, and the status code.
+    """
+    app = create_app(issuer=ISSUER, resource=RESOURCE, seed=True)
+    for host in ("203.0.113.9", "10.0.0.4", "2001:db8::1"):
+        remote = TestClient(app, client=(host, 41234)).get("/api/console-token")
+        assert remote.status_code == 403, (host, remote.status_code)
+        assert "access_token" not in remote.text, (host, remote.text)
+        assert remote.json()["error"], (host, remote.text)
+
+    # Four spellings of the same machine. An operator running Hearth locally
+    # reaches it over IPv4, IPv6 or by name depending on nothing they control,
+    # and being refused by their own instance is the whole feature failing.
+    for host in ("127.0.0.1", "::1", "localhost"):
+        near = TestClient(app, client=(host, 41234)).get("/api/console-token")
+        assert near.status_code == 200, (host, near.status_code)
+
+    local = TestClient(app).get("/api/console-token")
+    assert local.status_code == 200, local.text
+    assert local.json()["token_type"] == "Bearer", local.text
+    # And the token it mints has to actually work, or the console is broken in
+    # the one configuration this endpoint exists for.
+    tok = local.json()["access_token"]
+    assert TestClient(app).get(
+        "/api/state", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
+    print("PASS console tokens are loopback only, and the one it mints works")
+
+
+def test_the_console_api_refuses_every_caller_without_a_bearer_token():
+    """Four endpoints that read and write a household, added late and never
+    tested for the thing that matters about them. /api/state leaks the whole
+    house, /api/say writes to it, /api/act acts on it and /api/retire takes
+    something away, and the 401 on each was a survivor: it could have been
+    deleted, one endpoint at a time, with this suite green.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing(subject="hh-guarded")
+    calls = [("GET", "/api/state", {}),
+             ("POST", "/api/say", {"said": "keep it at 19", "speaker": "Dad"}),
+             ("POST", "/api/act", {"domain": "thermostat", "slot": "target"}),
+             ("POST", "/api/retire", {"belief_id": "nope"})]
+
+    for method, path, body in calls:
+        for headers in ({}, {"Authorization": "Bearer not-a-real-token"},
+                        {"Authorization": "Basic aGk6dGhlcmU="},
+                        {"Authorization": f"{tok}"}):
+            r = (c.get(path, headers=headers) if method == "GET"
+                 else c.post(path, json=body, headers=headers))
+            assert r.status_code == 401, (path, headers, r.status_code)
+            assert r.json()["error"] == "unauthorized", (path, r.text)
+        # And the same call goes through once it carries a real one.
+        assert console(c, tok, method, path, **body).status_code == 200, path
+    print("PASS all four console endpoints refuse a caller without a token")
+
+
+def test_the_console_shows_who_said_it_and_what_was_done_about_it():
+    """The console is the demo. Everything on it comes from one payload, and
+    every key in that payload is read by name in console.html, so a renamed or
+    emptied key is a blank panel on camera with a green suite behind it. The
+    action list is the part that matters most: the whole product claim is that
+    it can say why, and `actions` was sliced, reversed and never once read.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing(subject="hh-console")
+
+    say = console(c, tok, "POST", "/api/say",
+                  said="keep it at 19 in here", speaker="Dad").json()
+    assert "19" in say["reply"], say["reply"]
+    state = say["state"]
+    assert {"members", "slots", "contexts", "beliefs", "actions"} <= set(state)
+
+    # Attribution is the product. A belief with no holder is a preference
+    # nobody owns, and the resolver cannot rank what it cannot attribute.
+    mine = [b for b in state["beliefs"] if b["value"] == "19"]
+    assert mine and mine[0]["holder_name"] == "Dad", state["beliefs"]
+    assert mine[0]["live"] is True, mine[0]
+
+    slot = next(s for s in state["slots"] if s["domain"] == "thermostat")
+    assert slot["slot"] == "target" and slot["value"] == "19", slot
+    assert slot["basis"] and "Dad" in slot["sentence"], slot
+    assert slot["winner"]["holder"] == "Dad", slot["winner"]
+    assert "losers" in slot and slot["about"] is None, slot
+
+    assert [m["name"] for m in state["members"]].count("Dad") == 1, state["members"]
+    assert any(m["grants"] == ["thermostat"] for m in state["members"])
+
+    # A slot gets a household row and one row per person who has a scoped
+    # belief about it, and only for that slot. Attaching one person's scope to
+    # every slot on the board is the failure worth guarding: the console would
+    # claim Ada has a thermostat of her own.
+    console(c, tok, "POST", "/api/say", said="we eat at 19:00", speaker="Mum")
+    console(c, tok, "POST", "/api/say", said="dinner for Ada is at 17:00",
+            speaker="Mum")
+    rows = console(c, tok, "GET", "/api/state").json()["slots"]
+    meals = {(r["about"], r["value"]) for r in rows if r["domain"] == "meals"}
+    assert meals == {(None, "19:00"), ("Ada", "17:00")}, meals
+    assert {r["about"] for r in rows if r["domain"] == "thermostat"} == {None}, rows
+
+    # The losing belief and the rule that beat it are the part of the payload
+    # that makes Hearth more than a key-value store, and the console draws it.
+    console(c, tok, "POST", "/api/say", said="make it 24", speaker="Mum")
+    contested = next(r for r in console(c, tok, "GET", "/api/state").json()["slots"]
+                     if r["domain"] == "thermostat")
+    assert contested["value"] == "19", contested
+    assert [(l["value"], l["holder"]) for l in contested["losers"]] == \
+        [("24", "Mum")], contested["losers"]
+    assert contested["losers"][0]["reason"], contested["losers"]
+    assert contested["winner"]["stated_at"] and "context" in contested["winner"]
+    # The ids tie a row on the board back to a belief, which is how anything on
+    # the console can be stood down or argued with.
+    ids = {b["id"] for b in console(c, tok, "GET", "/api/state").json()["beliefs"]}
+    assert contested["winner"]["id"] in ids, contested["winner"]
+    assert contested["losers"][0]["id"] in ids, contested["losers"]
+    assert all({"id", "name", "role", "grants"} <= set(m)
+               for m in state["members"]), state["members"]
+
+    # And a situation shows what is riding on it, which is how anyone can see
+    # what ending it would take away.
+    console(c, tok, "POST", "/api/say", said="make it 23 while Gran is staying",
+            speaker="Ada")
+    contexts = console(c, tok, "GET", "/api/state").json()["contexts"]
+    assert [x["name"] for x in contexts] == ["Gran's visit"], contexts
+    assert contexts[0]["riding"] == ["thermostat.target=23"], contexts[0]
+
+    act = console(c, tok, "POST", "/api/act",
+                  domain="thermostat", slot="target").json()
+    assert "19" in act["reply"] and "Dad" in act["why"], act
+    actions = act["state"]["actions"]
+    assert actions, "the console showed no action after acting"
+    assert "thermostat" in actions[0]["what"], actions[0]
+    assert "Dad" in actions[0]["why"], actions[0]
+    print("PASS the console payload carries the house, the reasons and the actions")
+
+
+def test_the_console_acts_on_the_person_it_was_asked_about():
+    """"Dinner is at seven, and five for Ada" is the demo's second act. The
+    console passes `about` through to the resolver, and the lookup that turns a
+    spoken name into a member could have been dropped or inverted without a
+    single test noticing, which would have answered every question with the
+    household-wide value and lost the feature entirely.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing(subject="hh-about")
+    console(c, tok, "POST", "/api/say", said="we eat at 19:00", speaker="Mum")
+    console(c, tok, "POST", "/api/say", said="dinner for Ada is at 17:00",
+            speaker="Mum")
+
+    house = console(c, tok, "POST", "/api/act", domain="meals", slot="dinner").json()
+    assert "19:00" in house["reply"], house["reply"]
+    for spelling in ("Ada", "ada"):
+        her = console(c, tok, "POST", "/api/act", domain="meals", slot="dinner",
+                      about=spelling).json()
+        assert "17:00" in her["reply"], (spelling, her["reply"])
+    # Somebody who does not live here is not somebody.
+    stranger = console(c, tok, "POST", "/api/act", domain="meals", slot="dinner",
+                       about="Gran").json()
+    assert "19:00" in stranger["reply"], stranger["reply"]
+    print("PASS the console acts on the person it was asked about")
+
+
+def test_acting_on_a_slot_nobody_has_set_records_nothing():
+    """An assistant that logs an action it did not take is worse than one that
+    logs nothing, because `why` will later explain a thing that never happened.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing(subject="hh-empty")
+    r = console(c, tok, "POST", "/api/act", domain="security", slot="alarm").json()
+    assert "security" in r["reply"] and "alarm" in r["reply"], r["reply"]
+    assert "nobody has set" in r["reply"].lower(), r["reply"]
+    assert "why" not in r, r
+    assert r["state"]["actions"] == [], r["state"]["actions"]
+    print("PASS acting on a slot nobody has set records no action")
+
+
+def test_the_console_can_stand_a_belief_down():
+    """Standing something down is the one destructive thing the console can do,
+    and the id it acts on comes straight off the payload it drew. Nothing had
+    ever followed that loop round: read a belief id from the state, send it
+    back, and check the house actually changed.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing(subject="hh-retire")
+    state = console(c, tok, "POST", "/api/say",
+                    said="keep it at 19 in here", speaker="Dad").json()["state"]
+    bid = next(b["id"] for b in state["beliefs"] if b["value"] == "19")
+
+    gone = console(c, tok, "POST", "/api/retire", belief_id=bid).json()
+    assert "19" in gone["reply"] and "thermostat" in gone["reply"], gone["reply"]
+    assert gone["state"]["slots"] == [], gone["state"]["slots"]
+    assert [b["live"] for b in gone["state"]["beliefs"]] == [False], gone["state"]
+
+    stood = next(b for b in gone["state"]["beliefs"] if b["id"] == bid)
+    assert stood["ended_reason"], stood
+
+    again = console(c, tok, "POST", "/api/retire", belief_id=bid).json()
+    assert "no standing belief" in again["reply"].lower(), again["reply"]
+    missing = console(c, tok, "POST", "/api/retire").json()
+    assert "no standing belief" in missing["reply"].lower(), missing["reply"]
+    print("PASS the console can stand a belief down, once")
+
+
+def test_the_console_page_and_the_policy_pages_are_served():
+    """Three pages a human opens: the demo, and the two the add-on listing is
+    rejected for if they are missing. They are generated in Python, so an empty
+    string is a valid, servable, 200-answering blank page, and every one of them
+    could have gone blank with this suite green.
+    """
+    c, _ = client()
+    page = c.get("/console")
+    assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    assert len(page.text) > 500, len(page.text)
+
+    privacy = c.get("/privacy")
+    assert privacy.status_code == 200, privacy.status_code
+    assert "<title>Privacy" in privacy.text, privacy.text[:200]
+    for tag in ("</title>", "<style>", "</style>", "</h1>", "</main>"):
+        assert tag in privacy.text, tag
+    # A privacy policy that does not say what is stored is not a privacy policy,
+    # and Amazon's reviewer reads it.
+    for claim in ("What it stores", "What it does not store", "No audio",
+                  "Where it lives"):
+        assert claim in privacy.text, claim
+
+    terms = c.get("/terms")
+    assert terms.status_code == 200, terms.status_code
+    assert "<title>Terms of use" in terms.text, terms.text[:200]
+    for claim in ("no warranty", "not a safety system", "github.com/ubmids/hearth"):
+        assert claim.lower() in terms.text.lower(), claim
+    print("PASS the console and both policy pages are served with their content")
+
+
+def test_healthz_answers_with_the_state_of_this_instance():
+    """The keepalive pings it, the platform health check reads it, and it is the
+    first thing anyone curls. It reports counts, and nothing had ever compared
+    one against the house it claims to describe.
+
+    The house it describes is the default one, which is the household a caller
+    whose subject is "default" writes into. Counting live beliefs rather than
+    all of them is the part worth pinning: a retired belief is still in the
+    list, and a health check that counts it is reporting a house that is fuller
+    than the one the assistant is answering from.
+    """
+    c, app = client()
+    tok = app.state.auth.issue_for_testing(subject="default")
+    before = c.get("/healthz").json()
+    assert before["ok"] is True, before
+    assert before["protocol"] == PROTOCOL_VERSION, before
+    assert before["members"] == len(app.state.household.members), before
+    assert before["beliefs"] == 0, before
+    assert before["keepalive"] is False, before
+
+    reply = said_by(c, tok, "remember", said="keep it at 19 in here", speaker="Dad")
+    after = c.get("/healthz").json()
+    assert after["beliefs"] == before["beliefs"] + 1, (before, after)
+
+    said_by(c, tok, "stand_down",
+            belief_id=re.search(r"\bid ([0-9a-f]{6,})", reply).group(1))
+    assert c.get("/healthz").json()["beliefs"] == before["beliefs"], "counted a dead belief"
+    print("PASS healthz describes the instance it is running in")
+
+
+def test_the_token_response_may_not_be_cached_anywhere():
+    """OAuth 2.1 requires `Cache-Control: no-store` on a token response and RFC
+    6749 asks for the legacy `Pragma: no-cache` beside it. A cached bearer token
+    is a bearer token handed to whoever shares the cache.
+    """
+    c, app = client()
+    verifier = secrets.token_urlsafe(48)
+    t = redeem(c, app, code_for(c, app, verifier), verifier)
+    assert t.status_code == 200, t.text
+    assert t.headers.get("cache-control") == "no-store", dict(t.headers)
+    assert t.headers.get("pragma") == "no-cache", dict(t.headers)
+    print("PASS the token response forbids caching in both spellings")
+
+
+def test_a_household_is_kept_on_disk_per_subject_and_survives_a_restart():
+    """The instance recycles. Render spins a free service down, a deploy
+    replaces it, and the pitch is that the house remembers who said what, so an
+    empty house after a restart is the opposite of the product being
+    demonstrated. Two families on one instance must come back as two families.
+
+    Nothing had ever run create_app with a data path at all, so persistence
+    could have been off in production and every test would still pass.
+    """
+    tmp = tempfile.mkdtemp(prefix=f"hearth-app-{os.getpid()}-")
+    try:
+        path = os.path.join(tmp, "house")
+        app = create_app(issuer=ISSUER, resource=RESOURCE, data_path=path)
+        c = TestClient(app)
+        alice = app.state.auth.issue_for_testing(subject="hh-alice")
+        bob = app.state.auth.issue_for_testing(subject="hh-bob")
+        console(c, alice, "POST", "/api/say", said="keep it at 19", speaker="Dad")
+        console(c, bob, "POST", "/api/say", said="make it 26", speaker="Dad")
+
+        # A new process, the same disk. Tokens do not survive a restart, so the
+        # subjects are re-minted the way account linking would re-present them.
+        again = create_app(issuer=ISSUER, resource=RESOURCE, data_path=path)
+        c2 = TestClient(again)
+        for subject, expected in (("hh-alice", "19"), ("hh-bob", "26")):
+            tok = again.state.auth.issue_for_testing(subject=subject)
+            values = [s["value"] for s in
+                      console(c2, tok, "GET", "/api/state").json()["slots"]]
+            assert values == [expected], (subject, values)
+
+        # And the deployment configures it by environment, which is the only way
+        # the running service ever sets it.
+        os.environ["HEARTH_DATA"] = os.path.join(tmp, "env-house")
+        try:
+            env_app = create_app(issuer=ISSUER, resource=RESOURCE)
+            env_c = TestClient(env_app)
+            tok = env_app.state.auth.issue_for_testing(subject="hh-env")
+            console(env_c, tok, "POST", "/api/say", said="make it 21", speaker="Dad")
+            reopened = create_app(issuer=ISSUER, resource=RESOURCE)
+            tok2 = reopened.state.auth.issue_for_testing(subject="hh-env")
+            values = [s["value"] for s in TestClient(reopened).get(
+                "/api/state", headers={"Authorization": f"Bearer {tok2}"}
+            ).json()["slots"]]
+            assert values == ["21"], values
+        finally:
+            del os.environ["HEARTH_DATA"]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("PASS a household is kept on disk per subject and survives a restart")
+
+
+def test_the_running_service_is_configured_from_its_environment():
+    """create_app is called once, by the process the platform starts, with no
+    arguments at all. Every test calls it with an issuer and a resource, so the
+    branch that the deployment actually takes had never run: the environment
+    keys could have been misspelled and every test would still pass while the
+    live service advertised localhost in both well-known documents and Alexa+
+    refused to link an account against it.
+    """
+    for key in ("HEARTH_ISSUER", "HEARTH_RESOURCE"):
+        assert key not in os.environ, key
+    try:
+        bare_app = create_app()
+        bare = TestClient(bare_app)
+        assert bare.get("/.well-known/oauth-authorization-server").json()["issuer"] \
+            == "http://localhost:8000"
+        assert {m.name for m in bare_app.state.household.members.values()} == \
+            {"Dad", "Mum", "Ada"}, bare_app.state.household.members
+
+        os.environ["HEARTH_ISSUER"] = "https://hearth.example/"
+        configured = TestClient(create_app())
+        meta = configured.get("/.well-known/oauth-authorization-server").json()
+        # The trailing slash has to go, or every URL built from it doubles up
+        # and the audience the token is bound to stops matching the resource.
+        assert meta["issuer"] == "https://hearth.example", meta
+        assert meta["token_endpoint"] == "https://hearth.example/token", meta
+        # The resource defaults to the MCP endpoint under the issuer, which is
+        # the one URL the add-on manifest points Alexa+ at.
+        prm = configured.get("/.well-known/oauth-protected-resource").json()
+        assert prm["resource"] == "https://hearth.example/mcp", prm
+        assert prm["authorization_servers"] == ["https://hearth.example"], prm
+
+        os.environ["HEARTH_RESOURCE"] = "https://elsewhere.example/mcp/"
+        split = TestClient(create_app())
+        assert split.get("/.well-known/oauth-protected-resource").json()["resource"] \
+            == "https://elsewhere.example/mcp"
+    finally:
+        os.environ.pop("HEARTH_ISSUER", None)
+        os.environ.pop("HEARTH_RESOURCE", None)
+    print("PASS the running service is configured from its environment")
+
+
+def test_the_keepalive_runs_only_when_it_is_switched_on():
+    """A stopgap for the free plan, and the reason the cold start does not land
+    on a judge. It is off by default and on in the deployed environment, and
+    both halves were unasserted: the flag could have been inverted, the URL
+    could have pointed anywhere, and the interval could have failed to parse.
+    """
+    started = []
+
+    async def recorder(url, every, log=print):
+        started.append((url, every))
+
+    real = app_module._keepalive
+    app_module._keepalive = recorder
+    try:
+        with TestClient(create_app(issuer=ISSUER, resource=RESOURCE)) as c:
+            assert started == [], started
+            assert c.get("/healthz").json()["keepalive"] is False
+
+        for value in ("1", "true", "yes"):
+            started.clear()
+            os.environ["HEARTH_KEEPALIVE"] = value
+            with TestClient(create_app(issuer=ISSUER, resource=RESOURCE)) as c:
+                # It has to go out through the public URL to count as an inbound
+                # request, which is the entire reason the function exists.
+                assert started == [(f"{ISSUER}/healthz", 600)], (value, started)
+                assert c.get("/healthz").json()["keepalive"] is True
+
+        started.clear()
+        os.environ["HEARTH_KEEPALIVE_SECONDS"] = "90"
+        with TestClient(create_app(issuer=ISSUER, resource=RESOURCE)):
+            assert started == [(f"{ISSUER}/healthz", 90)], started
+    finally:
+        app_module._keepalive = real
+        os.environ.pop("HEARTH_KEEPALIVE", None)
+        os.environ.pop("HEARTH_KEEPALIVE_SECONDS", None)
+    print("PASS the keepalive runs only when switched on, against the public URL")
+
+
+def test_a_failed_keepalive_ping_never_takes_the_service_down():
+    """It is a `while True` around a network call on a live service. If a failed
+    ping escaped, the task would die silently and the instance would go back to
+    sleeping, which is the one thing it exists to prevent.
+    """
+    import asyncio
+
+    seen = []
+    real_sleep = asyncio.sleep
+
+    async def no_wait(_seconds):
+        await real_sleep(0)
+
+    async def drive(url):
+        asyncio.sleep = no_wait
+        try:
+            task = asyncio.create_task(
+                app_module._keepalive(url, 600, log=seen.append))
+            for _ in range(500):
+                await real_sleep(0.002)
+                if seen:
+                    break
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        finally:
+            asyncio.sleep = real_sleep
+
+    # Nothing is listening on port 9, so the ping cannot succeed.
+    asyncio.run(drive("http://127.0.0.1:9/healthz"))
+    assert seen, "the keepalive never got as far as one ping"
+    assert all(isinstance(line, str) for line in seen), seen
+    print("PASS a failed keepalive ping is logged and swallowed")
+
 
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

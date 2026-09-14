@@ -8,9 +8,14 @@ rather than a submission.
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from fastapi.testclient import TestClient
+
+from hearth.app import create_app
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 M = json.load(open(os.path.join(ROOT, "addon.json")))
@@ -85,6 +90,39 @@ def test_the_mcp_endpoint_matches_the_deployment():
     uri = M["integrations"][0]["config"]["endpoints"]["default"]["uri"]
     assert uri.endswith("/mcp"), uri
     print("PASS the MCP endpoint is declared:", uri)
+
+
+def test_this_app_serves_everything_the_listing_promises():
+    """The check above fetches the live deployment, which means it is skipped in
+    CI and on any machine that is offline, and a listing whose assets moved
+    would be found only after submitting. Every URL in the manifest is served by
+    this application, so the same claim can be checked against the code.
+
+    Asserting the paths resolve is not pedantry: /assets is a mount, the policy
+    pages are strings built in Python, and each of them could have gone empty or
+    moved without one test noticing, leaving six icons, a carousel image and
+    both policy documents 404ing on the listing Amazon reviews.
+    """
+    declared = [i["uri"] for i in LOC["mediaAssets"]["icons"]["light"]]
+    declared += [c["uri"] for c in LOC["mediaAssets"]["carouselImages"]]
+    declared += [LOC["privacyAndCompliance"]["privacyPolicyUrl"],
+                 LOC["privacyAndCompliance"]["termsOfUseUrl"]]
+
+    c = TestClient(create_app(issuer="https://hearth.test",
+                              resource="https://hearth.test/mcp"))
+    for uri in declared:
+        path = urllib.parse.urlparse(uri).path
+        r = c.get(path)
+        assert r.status_code == 200, f"{uri} is declared but {path} answers {r.status_code}"
+        assert len(r.content) > 200, f"{path} served almost nothing ({len(r.content)} bytes)"
+
+    # The endpoint the integration points at has to be the one that speaks MCP,
+    # and it answers 401 rather than 404 because it is the protected resource.
+    mcp_path = urllib.parse.urlparse(
+        M["integrations"][0]["config"]["endpoints"]["default"]["uri"]).path
+    assert c.post(mcp_path, json={"jsonrpc": "2.0", "id": 1,
+                                  "method": "ping"}).status_code == 401
+    print(f"PASS all {len(declared)} declared URLs are served by this app")
 
 
 if __name__ == "__main__":

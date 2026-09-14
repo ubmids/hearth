@@ -202,6 +202,20 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
             out = [r for r in (server.handle(m) for m in payload) if r is not None]
             return timed(out) if out else timed(None, 202)
 
+        if not isinstance(payload, dict):
+            # `"hello"`, `42` and `null` are all valid JSON and none of them is
+            # a JSON-RPC request. This used to fall straight through to
+            # `payload.get` and raise, so the endpoint answered a malformed body
+            # with a 500 and a stack trace rather than the error the spec names
+            # for exactly this case. It sits behind the bearer check, so it was
+            # never reachable anonymously, but a 500 from the MCP endpoint is
+            # indistinguishable from the server being broken and a reviewer with
+            # a token is exactly who would have found it.
+            return JSONResponse({"jsonrpc": "2.0", "id": None,
+                                 "error": {"code": -32600,
+                                           "message": "Invalid Request"}},
+                                status_code=400, headers=headers)
+
         if payload.get("method") == "initialize":
             sid = server.new_session()
             headers["Mcp-Session-Id"] = sid
@@ -223,9 +237,6 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         host = (request.client.host if request.client else "") or ""
         return host in ("127.0.0.1", "::1", "localhost", "testclient")
 
-    def _guard(request: Request):
-        return auth.verify(request.headers.get("authorization")) is not None
-
     @app.get("/api/console-token")
     async def console_token(request: Request):
         if not _is_local(request):
@@ -234,15 +245,17 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         return {"access_token": auth.issue_for_testing(subject="console"),
                 "token_type": "Bearer"}
 
-    def _state(house=None, led=None):
+    def _state(household, ledger):
         """Everything the console draws, resolved server-side.
 
         Resolution belongs here, not in the page: the console must show exactly
         what Alexa+ would be told, and a second implementation in JavaScript
         would drift from the real one and quietly lie on camera.
+
+        Both arguments are required. They used to default to the "default"
+        household, and every caller passed its own, so the fallback was
+        unreachable: code that can only ever be wrong if it starts running.
         """
-        household, ledger = (house or homes["default"][0],
-                             led or homes["default"][1])
         live = [b for b in household.beliefs if b.is_live()]
         slots, seen = [], set()
         for b in live:

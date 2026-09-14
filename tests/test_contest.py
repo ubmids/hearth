@@ -483,6 +483,48 @@ def test_the_sentence_the_assistant_says_out_loud():
                    604800: "1 week ago", 3 * WEEK: "3 weeks ago"}, ago
     print("PASS the sentence the assistant says out loud")
 
+def test_a_save_that_fails_does_not_destroy_the_house():
+    """The store writes to a temp file and renames it, and the rename is the
+    only reason a half-written save is survivable. Nothing tested that, because
+    the guarantee only shows itself on the one run that goes wrong: write
+    straight to the real path and any failure mid-write leaves a truncated file
+    where the household used to be, which reads back as an empty house.
+
+    Forced here by handing `save` something that cannot be serialised, which is
+    what a crash in the middle of a write looks like from the file's point of
+    view.
+    """
+    tmp = tempfile.mkdtemp(prefix=f"hearth-atomic-{os.getpid()}-")
+    try:
+        path = os.path.join(tmp, "house")
+        store = Store(path)
+        h = Household("test", store=store)
+        dad = h.add_member("Dad", role="adult", grants=["thermostat"])
+        h.assert_belief(dad.id, "thermostat", "target", "19", content="keep it at 19")
+
+        class Unserialisable:
+            """A member whose grants json cannot write. The failure has to land
+            inside the dump rather than before it, which is the whole point."""
+            id = "m-broken"
+
+            def to_dict(self):
+                return {"id": self.id, "name": "Broken", "role": "adult",
+                        "grants": {"a set", "json cannot write"}}
+
+        try:
+            store.save({"m-broken": Unserialisable()}, h.beliefs)
+            raise AssertionError("the unserialisable save was supposed to fail")
+        except TypeError:
+            pass
+
+        members, beliefs = Store(path).load()
+        assert [m.name for m in members.values()] == ["Dad"], members
+        assert [b.value for b in beliefs] == ["19"], beliefs
+        print("PASS a save that fails does not destroy the house")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     for fn in [v for k, v in sorted(globals().items()) if k.startswith("test_")]:
         fn()
