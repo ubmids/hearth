@@ -14,6 +14,7 @@ import urllib.parse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .extract import detect_context_end, extract
 from .household import Household
@@ -306,6 +307,74 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         b = household.retire(body.get("belief_id"), reason="stood down in the console")
         return {"reply": (f"Stood down {b.domain}.{b.slot}={b.value}." if b
                           else "No standing belief with that id."), "state": _state()}
+
+    # The add-on manifest requires HTTPS URLs for six icons, a carousel image,
+    # a privacy policy and terms of use. Serving them from the service itself
+    # means the listing has no dependency on a second host that could be down,
+    # expire, or quietly start returning a parked-domain page during judging.
+    app.mount("/assets", StaticFiles(directory=os.path.join(
+        os.path.dirname(__file__), "web", "assets")), name="assets")
+
+    def _page(title: str, body: str) -> HTMLResponse:
+        return HTMLResponse(f"""<!doctype html><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>{title} · Hearth</title>
+<style>
+ body{{margin:0;background:#14100e;color:#f2e9e1;
+      font:16px/1.65 ui-sans-serif,-apple-system,"Segoe UI",sans-serif}}
+ main{{max-width:64ch;margin:0 auto;padding:56px 20px 80px}}
+ h1{{font-size:27px;letter-spacing:-.02em;margin:0 0 6px}}
+ h2{{font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:#6f5f54;
+     margin:34px 0 10px}}
+ p,li{{color:#cbbcb0}} a{{color:#ff7a45}} strong{{color:#f2e9e1}}
+ .sub{{color:#a4907f;margin:0 0 8px}}
+</style><main><h1>{title}</h1>{body}
+<p style="margin-top:44px"><a href="/console">Back to the console</a></p></main>""")
+
+    @app.get("/privacy", response_class=HTMLResponse)
+    async def privacy():
+        return _page("Privacy", """
+<p class=sub>Hearth, household memory for Alexa+.</p>
+<h2>What it stores</h2>
+<p>Hearth stores the household preferences a member states out loud, and for
+each one: who said it, when, the situation it was said in, and whether it still
+stands. It also stores a record of the actions taken on the household's behalf
+and the beliefs that justified each one.</p>
+<h2>What it does not store</h2>
+<p>No audio. No transcripts of conversation. Nothing a member says that is not a
+durable household preference. The extraction step is explicitly instructed to
+discard small talk, and anything it does not classify as a durable preference is
+never written.</p>
+<h2>Where it lives</h2>
+<p>Data is held by this deployment and is not sold, shared, or used to train
+anything. Every access is recorded in the same audit trail members can read.</p>
+<h2>Getting it out, and getting rid of it</h2>
+<p>Any member can ask what the house knows and have any belief stood down in
+conversation. A belief that is stood down stops applying immediately and stays
+in the audit trail so the household can see it was there and when it ended.</p>
+<h2>This deployment</h2>
+<p>This is a demonstration built for the Amazon Developer Hackathon 2026. Treat
+the household on it as public and do not put anything real into it.</p>""")
+
+    @app.get("/terms", response_class=HTMLResponse)
+    async def terms():
+        return _page("Terms of use", """
+<p class=sub>Hearth, household memory for Alexa+.</p>
+<h2>What this is</h2>
+<p>A demonstration of a self-hosted MCP server, built for the Amazon Developer
+Hackathon 2026. It is offered as is, with no warranty and no guarantee of
+availability, and it may be changed or taken down at any time.</p>
+<h2>What it is not</h2>
+<p>It is not a safety system. Do not connect Hearth to anything where acting on
+a stale or contested preference could cause harm. Its whole purpose is to make
+an assistant's reasoning inspectable, which is a different thing from making it
+correct.</p>
+<h2>Your content</h2>
+<p>You keep whatever you put in. The operator claims no rights over it and will
+not use it for anything other than running the service for you.</p>
+<h2>Source</h2>
+<p>Open source under the MIT licence at
+<a href="https://github.com/ubmids/hearth">github.com/ubmids/hearth</a>.</p>""")
 
     @app.get("/console", response_class=HTMLResponse)
     async def console():

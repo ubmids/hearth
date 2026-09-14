@@ -1,0 +1,84 @@
+{
+  "manifestVersion": "1.0",
+  "storeListing": {
+    "distributionCountries": [
+      "US"
+    ],
+    "locales": {
+      "en-US": {
+        "default": "DEFAULT",
+        "name": {
+          "value": "Hearth",
+          "spokenForm": {
+            "format": "ipa",
+            "value": "h\u0251\u02d0\u03b8"
+          }
+        },
+        "shortDescription": "Remembers who in the house said what, when, and whether it still holds.",
+        "fullDescription": "Alexa+ takes actions now, not just answers, and that changes what goes wrong. A wrong answer is annoying. A wrong action is a breach of trust.\n\nA home is the hardest place to get this right, because household state is contested. Several people, competing preferences, different authority, and facts that quietly expire. Dad set the thermostat rule. The kid overrode it. Someone was ill last week. You changed coffee in March.\n\nHearth gives Alexa+ a household memory with the three things ordinary memory leaves out. Provenance: every preference records who said it, when, and in what situation, so it is never just \u201cthermostat at 19\u201d but \u201cDad, three weeks ago, during the cold snap\u201d. Supersession: preferences are retired rather than overwritten, so you can ask what the house used to think and when it changed its mind. Contest resolution: when two people disagree, Hearth resolves by authority and recency and then explains the resolution instead of silently picking one.\n\nOn top sits an action ledger. Every autonomous action is recorded against the exact preferences that justified it, so \u201cwhy did you do that\u201d has a real answer. Retire one preference out loud and the behaviour changes, with no app and no settings screen.\n\nSituations end, too. \u201cGran has gone home\u201d closes everything that was only true while she was staying, without anyone having to remember what those things were.\n\nOpen source under the MIT licence.",
+        "examplePhrases": [
+          "Why did you set the thermostat to twenty four?",
+          "The cold snap is over",
+          "What did Dad say about the thermostat?",
+          "Who decided dinner is at seven?"
+        ],
+        "privacyAndCompliance": {
+          "privacyPolicyUrl": "https://hearth-sh3u.onrender.com/privacy",
+          "termsOfUseUrl": "https://hearth-sh3u.onrender.com/terms"
+        },
+        "mediaAssets": {
+          "icons": {
+            "light": [
+              {
+                "size": "72x72",
+                "uri": "https://hearth-sh3u.onrender.com/assets/icon-72x72.png"
+              },
+              {
+                "size": "64x64",
+                "uri": "https://hearth-sh3u.onrender.com/assets/icon-64x64.png"
+              },
+              {
+                "size": "88x88",
+                "uri": "https://hearth-sh3u.onrender.com/assets/icon-88x88.png"
+              },
+              {
+                "size": "126x126",
+                "uri": "https://hearth-sh3u.onrender.com/assets/icon-126x126.png"
+              },
+              {
+                "size": "180x180",
+                "uri": "https://hearth-sh3u.onrender.com/assets/icon-180x180.png"
+              },
+              {
+                "size": "241x241",
+                "uri": "https://hearth-sh3u.onrender.com/assets/icon-241x241.png"
+              }
+            ],
+            "dark": []
+          },
+          "carouselImages": [
+            {
+              "uri": "https://hearth-sh3u.onrender.com/assets/carousel-1.png",
+              "altText": "Hearth explaining why the thermostat is at 24: Dad set it three weeks ago during a cold snap, and offering to stand that down.",
+              "size": "600x900"
+            }
+          ],
+          "bannerImages": []
+        }
+      }
+    }
+  },
+  "integrations": [
+    {
+      "type": "MCP",
+      "config": {
+        "endpoints": {
+          "default": {
+            "type": "HTTPS",
+            "uri": "https://hearth-sh3u.onrender.com/mcp"
+          }
+        }
+      }
+    }
+  ]
+}

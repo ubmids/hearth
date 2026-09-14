@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#1b1614"/><stop offset="1" stop-color="#120e0c"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="900" fill="url(#bg)"/>
+
+  <text x="56" y="112" fill="#f2e9e1" font-family="Helvetica,Arial,sans-serif"
+        font-size="46" font-weight="700" letter-spacing="-1">Hearth</text>
+  <text x="56" y="158" fill="#a4907f" font-family="Helvetica,Arial,sans-serif"
+        font-size="21">The household memory Alexa+ can be trusted with.</text>
+
+  <rect x="56" y="214" width="488" height="1" fill="#302722"/>
+
+  <text x="56" y="286" fill="#6f5f54" font-family="Helvetica,Arial,sans-serif"
+        font-size="14" letter-spacing="2">THREE WEEKS AGO</text>
+  <text x="56" y="330" fill="#f2e9e1" font-family="Helvetica,Arial,sans-serif"
+        font-size="25">Dad: “turn it up to 24,</text>
+  <text x="56" y="364" fill="#f2e9e1" font-family="Helvetica,Arial,sans-serif"
+        font-size="25">it’s a cold snap.”</text>
+
+  <text x="56" y="446" fill="#6f5f54" font-family="Helvetica,Arial,sans-serif"
+        font-size="14" letter-spacing="2">TODAY</text>
+  <text x="56" y="490" fill="#f2e9e1" font-family="Helvetica,Arial,sans-serif"
+        font-size="25">“Why is it so warm in here?”</text>
+
+  <rect x="56" y="540" width="488" height="196" rx="14"
+        fill="#221b17" stroke="#302722"/>
+  <text x="80" y="584" fill="#ff7a45" font-family="Helvetica,Arial,sans-serif"
+        font-size="14" letter-spacing="2">ALEXA+</text>
+  <text x="80" y="622" fill="#f2e9e1" font-family="Helvetica,Arial,sans-serif"
+        font-size="20">Dad set it three weeks ago,</text>
+  <text x="80" y="652" fill="#f2e9e1" font-family="Helvetica,Arial,sans-serif"
+        font-size="20">during the cold snap, to 24.</text>
+  <text x="80" y="690" fill="#a4907f" font-family="Helvetica,Arial,sans-serif"
+        font-size="20">Shall I stand that down?</text>
+
+  <text x="56" y="806" fill="#a4907f" font-family="Helvetica,Arial,sans-serif"
+        font-size="19">Who said it. When. Whether it still holds.</text>
+  <text x="56" y="836" fill="#a4907f" font-family="Helvetica,Arial,sans-serif"
+        font-size="19">And why it won.</text>
+</svg>
