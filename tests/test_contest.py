@@ -56,15 +56,56 @@ def test_explicit_grant_beats_role_rank():
 
 
 def test_scope_beats_everything():
-    """'We eat at 7' and 'the baby eats at 5' are both true."""
-    h, dad, mum, kid = house()
-    h.assert_belief(dad.id, "meals", "dinner", "19:00")
-    h.assert_belief(mum.id, "meals", "dinner", "17:00", scope=kid.id)
+    """'We eat at 7' and 'the baby eats at 5' are both true.
+
+    Mutiny found that the first version of this test passed for the wrong
+    reason. The scoped belief was also the most recent, from a member of equal
+    authority, so recency alone produced the same answer and the scope rule was
+    never exercised: deleting it entirely left this test green.
+
+    So the household-wide rule is now BOTH more recent AND from higher
+    authority. Nothing except scope can produce the scoped answer.
+    """
+    h = Household("test")
+    dad = h.add_member("Dad", role="owner", grants=["meals"])   # outranks Mum
+    mum = h.add_member("Mum", role="adult")
+    kid = h.add_member("Kid", role="child")
+    now = time.time()
+
+    h.assert_belief(mum.id, "meals", "dinner", "17:00", scope=kid.id,
+                    stated_at=now - WEEK)          # older, lower authority
+    h.assert_belief(dad.id, "meals", "dinner", "19:00", stated_at=now)
+
     assert h.resolve("meals", "dinner").winner.value == "19:00"
     r = h.resolve("meals", "dinner", for_member=kid.id)
-    assert r.winner.value == "17:00"
+    assert r.winner.value == "17:00", (
+        "the household rule won for Kid, so scope is not being applied")
     assert r.basis == "scope"
     print("PASS scope:", r.explain(h.name_of))
+
+
+def test_the_reason_given_is_the_one_that_settled_it():
+    """With more than one loser, the basis must describe how the winner beat the
+    runner-up, not the last-placed belief. Nothing had two losers before, so
+    `losers[0]` could have been `losers[-1]` unnoticed."""
+    h = Household("test")
+    dad = h.add_member("Dad", role="adult", grants=["thermostat"])
+    mum = h.add_member("Mum", role="adult")
+    kid = h.add_member("Kid", role="child")
+    now = time.time()
+
+    h.assert_belief(dad.id, "thermostat", "target", "19", stated_at=now - WEEK)
+    h.assert_belief(mum.id, "thermostat", "target", "21", stated_at=now - 60)
+    h.assert_belief(kid.id, "thermostat", "target", "25", stated_at=now)
+
+    r = h.resolve("thermostat", "target")
+    assert r.winner.value == "19"
+    assert len(r.losers) == 2
+    # The runner-up is Mum, and Dad beat her on authority.
+    assert r.losers[0][0].value == "21", [l[0].value for l in r.losers]
+    assert r.basis == "authority"
+    print("PASS the basis explains how the runner-up was beaten:",
+          r.explain(h.name_of))
 
 
 def test_context_expiry_without_deletion():
@@ -86,6 +127,64 @@ def test_context_expiry_without_deletion():
     assert warm.status == "expired" and warm.ended_reason
     assert warm in h.beliefs, "an expired belief must survive for the audit trail"
     print("PASS context expiry:", r.explain(h.name_of))
+
+
+# --- the four below were found by Mutiny, not by thinking harder -------------
+# Each corresponds to a mutation of household.py that the suite above waved
+# through: a change you could have shipped with everything green.
+
+def test_a_belief_from_someone_who_does_not_live_here():
+    """`if m else 0` on the authority lookup. A belief whose holder is not in the
+    household had no test at all, so the fallback could have returned anything.
+    It must rank below every real member, or a stranger outranks the family."""
+    h, dad, mum, kid = house()
+    now = time.time()
+    h.assert_belief(kid.id, "shopping", "coffee", "Lavazza", stated_at=now - WEEK)
+    ghost = h.assert_belief("not-a-member", "shopping", "coffee", "Sumatra",
+                            stated_at=now)
+    r = h.resolve("shopping", "coffee")
+    assert r.winner.value == "Lavazza", r.winner.value
+    assert h._authority(ghost) == 0
+    print("PASS a belief from a stranger ranks below every member")
+
+
+def test_retiring_something_already_retired():
+    """`b is None or b.status != "active"`. Standing down a belief twice had no
+    test, so the guard could have been removed and the second call would have
+    rewritten the reason on an already-retired belief."""
+    h, dad, mum, kid = house()
+    b = h.assert_belief(dad.id, "thermostat", "target", "19")
+    assert h.retire(b.id, reason="first") is not None
+    assert h.retire(b.id, reason="second") is None, "it retired it twice"
+    assert b.ended_reason == "first", b.ended_reason
+    assert h.retire("no-such-id") is None
+    print("PASS retiring an already-retired belief is refused, reason preserved")
+
+
+def test_asking_about_something_nobody_has_set():
+    """`Resolution(winner=None, basis="no live belief")` was never exercised.
+    An assistant asking about a setting the house has no opinion on is the
+    common case, not an edge one."""
+    h, dad, mum, kid = house()
+    r = h.resolve("thermostat", "target")
+    assert r.winner is None and r.losers == []
+    assert r.basis == "no live belief"
+    assert r.explain(h.name_of) == "Nobody has set that."
+    print("PASS an unset domain resolves to nothing, with a sentence to say")
+
+
+def test_ending_a_context_reports_what_it_ended():
+    """`return ended`. The caller needs the list to tell the household what just
+    stopped applying, and nothing checked it was returned."""
+    h, dad, mum, kid = house()
+    a = h.assert_belief(dad.id, "thermostat", "target", "23", context="Gran's visit")
+    b = h.assert_belief(mum.id, "meals", "dinner", "18:00", context="Gran's visit")
+    h.assert_belief(dad.id, "lights", "bedtime", "22:00")
+    ended = h.end_context("Gran's visit")
+    assert {x.id for x in ended} == {a.id, b.id}, [x.id for x in ended]
+    assert h.end_context("Gran's visit") == [], "it ended the same context twice"
+    assert h.end_context("a situation nobody opened") == []
+    print("PASS ending a context returns exactly what stopped applying")
 
 
 def test_why_then_repair():
