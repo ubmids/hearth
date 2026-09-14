@@ -27,6 +27,16 @@ def _id() -> str:
 ROLE_RANK = {"owner": 3, "adult": 2, "child": 1, "guest": 0}
 
 
+def _under(domain: str, prefix: str) -> bool:
+    """Does `domain` sit at or below `prefix` in the dotted namespace?
+
+    A plain startswith was wrong: `bedroom.*` then covered `bedrooms` and
+    `bedroom_annexe` as well, which is somebody silently gaining the say over a
+    room that was never theirs. The separator has to be part of the match.
+    """
+    return domain == prefix or domain.startswith(prefix + ".")
+
+
 @dataclass
 class Member:
     """A person in the household."""
@@ -41,7 +51,7 @@ class Member:
     def authority_over(self, domain: str) -> int:
         """Higher wins. Explicit grants beat role rank."""
         for g in self.grants:
-            if g == domain or (g.endswith(".*") and domain.startswith(g[:-2])):
+            if g == domain or (g.endswith(".*") and _under(domain, g[:-2])):
                 return 100 + ROLE_RANK.get(self.role, 0)
         return ROLE_RANK.get(self.role, 0)
 
@@ -164,6 +174,20 @@ class Resolution:
             "losers": [{"belief": b.to_dict(), "reason": r} for b, r in self.losers],
             "basis": self.basis,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Resolution":
+        """The other half of to_dict, which was missing.
+
+        A resolution is written to disk inside every ledger entry, so without a
+        way back the reason an action was taken survives a restart as JSON and
+        nothing more. See Ledger.__init__ for what that cost.
+        """
+        return cls(
+            winner=Belief.from_dict(d["winner"]) if d.get("winner") else None,
+            losers=[(Belief.from_dict(x["belief"]), x["reason"])
+                    for x in d.get("losers", [])],
+            basis=d.get("basis", ""))
 
 
 def _ago(then: float, now: float | None = None) -> str:

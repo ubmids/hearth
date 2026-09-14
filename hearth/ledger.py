@@ -26,12 +26,30 @@ class Action:
                 "at": self.at, "outcome": self.outcome,
                 "resolution": self.resolution.to_dict() if self.resolution else None}
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Action":
+        a = cls(what=d["what"], domain=d["domain"],
+                outcome=d.get("outcome", "done"),
+                resolution=(Resolution.from_dict(d["resolution"])
+                            if d.get("resolution") else None))
+        a.id = d["id"]
+        a.at = d["at"]
+        return a
+
 
 class Ledger:
     def __init__(self, household, store=None):
         self.household = household
         self.store = store
-        self.actions: list[Action] = store.load_actions() if store else []
+        # load_actions hands back raw dictionaries, and this line used to keep
+        # them. Every Action attribute access after a restart then hit a dict:
+        # `why` raised, the next `did` could not save, and the console's state
+        # endpoint returned 500. For a product whose whole claim is that it
+        # remembers why it acted, the memory not surviving a restart was the
+        # worst bug in the tree, and no test saw it because every test built a
+        # ledger in memory and never reopened one.
+        self.actions: list[Action] = (
+            [Action.from_dict(a) for a in store.load_actions()] if store else [])
 
     def record(self, what, domain, resolution=None, outcome="done") -> Action:
         a = Action(what=what, domain=domain, resolution=resolution, outcome=outcome)

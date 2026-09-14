@@ -118,6 +118,16 @@ class AuthServer:
             # minted for one MCP server being replayed against another.
             return "", {"error": "invalid_target",
                         "error_description": "resource must be the canonical MCP URI"}
+        # An authorization endpoint that honours any redirect_uri it is handed is
+        # an open redirector, and the thing being redirected is an authorization
+        # code. The allowlist below is the real defence and is only as good as
+        # what the deployment registers, so the shape check runs regardless:
+        # OAuth 2.1 allows TLS or loopback and nothing else, which is also what
+        # keeps `javascript:` and `data:` out of a URL we hand to the browser.
+        if not redirect_uri.startswith(("https://", "http://localhost",
+                                        "http://127.0.0.1")):
+            return "", {"error": "invalid_request",
+                        "error_description": "redirect_uri must be https, or http on loopback"}
         if self.redirect_uris and redirect_uri not in self.redirect_uris:
             return "", {"error": "invalid_request",
                         "error_description": "redirect_uri not registered"}
@@ -152,7 +162,13 @@ class AuthServer:
             return {}, {"error": "invalid_grant", "error_description": "code expired"}
         if pending.client_id != client_id:
             return {}, {"error": "invalid_client"}
-        if redirect_uri and redirect_uri != pending.redirect_uri:
+        # Keyed off what the code was issued with, not off what the caller chose
+        # to send. The first version read `if redirect_uri and ...`, which an
+        # attacker defeats by leaving the parameter out entirely: the check only
+        # ever ran for clients that were behaving anyway. OAuth 2.1 makes the
+        # parameter required at the token endpoint whenever the authorization
+        # request carried one, and this is why.
+        if pending.redirect_uri and redirect_uri != pending.redirect_uri:
             return {}, {"error": "invalid_grant", "error_description": "redirect_uri mismatch"}
         if not code_verifier:
             return {}, {"error": "invalid_request", "error_description": "code_verifier required"}

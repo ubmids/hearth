@@ -249,6 +249,10 @@ class HearthMCP:
         return _text(f"Stood down: {b.domain}.{b.slot} = {b.value} ({reason}).")
 
     def _tool_end_context(self, context):
+        if not context:
+            # Said out loud, "Nothing was riding on None" is worse than useless.
+            # A model that calls this without naming a situation gets asked.
+            return _text("Which situation ended?")
         ended = self.h.end_context(context)
         if not ended:
             return _text(f"Nothing was riding on {context}.")

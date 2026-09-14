@@ -73,7 +73,14 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
     issuer = (issuer or os.getenv("HEARTH_ISSUER", "http://localhost:8000")).rstrip("/")
     resource = (resource or os.getenv("HEARTH_RESOURCE", f"{issuer}/mcp")).rstrip("/")
 
-    auth = AuthServer(issuer=issuer, resource=resource)
+    # The allowlist existed in AuthServer from the start and nothing ever filled
+    # it, so the "redirect_uri not registered" branch was dead code in every
+    # deployment and any redirect_uri was honoured. Comma separated, exact match,
+    # and empty means the shape check in AuthServer.authorize is the only guard.
+    registered = [u.strip() for u in
+                  os.getenv("HEARTH_REDIRECT_URIS", "").split(",") if u.strip()]
+    auth = AuthServer(issuer=issuer, resource=resource,
+                      redirect_uris=registered or None)
 
     # One household per authenticated subject. A single shared house was fine
     # while the only client was a test, and wrong the moment the thing was

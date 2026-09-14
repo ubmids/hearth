@@ -77,6 +77,13 @@ class Household:
         Deleting it would lose the fact that it was true; leaving it would have
         the house heated for a guest who left in March.
         """
+        if not context:
+            # `b.context == None` matches every belief that was never tied to a
+            # situation, so ending "no context" quietly expires the household's
+            # entire standing memory. The MCP tool takes this argument straight
+            # from a language model, which is reason enough to refuse it here
+            # rather than trust that every caller passes something real.
+            return []
         ended = []
         for b in self.beliefs:
             if b.context == context and b.is_live(now):
