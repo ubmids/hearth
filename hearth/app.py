@@ -33,6 +33,34 @@ def seed_demo_household(h: Household) -> None:
     h.add_member("Ada", role="child", grants=["bedroom.ada"])
 
 
+async def _keepalive(url: str, every: int, log=print):
+    """Keep a sleeping free instance awake by calling our own public health URL.
+
+    Render spins a free service down after roughly 15 minutes without an inbound
+    request, and the cold start that follows was measured at 641ms against a
+    500ms requirement. The request has to arrive through the public URL to count
+    as inbound, so this deliberately goes out to the internet and back rather
+    than hitting the loopback interface.
+
+    This is a stopgap for the free plan and nothing more. On a paid instance
+    there is no spin-down and HEARTH_KEEPALIVE should be turned off: an app that
+    pings itself forever is a smell, not an architecture.
+    """
+    import asyncio
+
+    import httpx
+
+    await asyncio.sleep(30)                    # let the first boot settle
+    async with httpx.AsyncClient(timeout=20) as client:
+        while True:
+            try:
+                r = await client.get(url)
+                log(f"keepalive {r.status_code} {url}")
+            except Exception as e:             # a failed ping must never take
+                log(f"keepalive failed: {e}")  # the service down with it
+            await asyncio.sleep(every)
+
+
 def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> FastAPI:
     issuer = (issuer or os.getenv("HEARTH_ISSUER", "http://localhost:8000")).rstrip("/")
     resource = (resource or os.getenv("HEARTH_RESOURCE", f"{issuer}/mcp")).rstrip("/")
@@ -282,7 +310,24 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
     async def healthz():
         return {"ok": True, "protocol": PROTOCOL_VERSION,
                 "members": len(household.members),
-                "beliefs": sum(1 for b in household.beliefs if b.is_live())}
+                "beliefs": sum(1 for b in household.beliefs if b.is_live()),
+                "keepalive": bool(app.state.keepalive_task)}
+
+    app.state.keepalive_task = None
+
+    @app.on_event("startup")
+    async def _start_keepalive():
+        import asyncio
+        if os.getenv("HEARTH_KEEPALIVE", "0") not in ("1", "true", "yes"):
+            return
+        every = int(os.getenv("HEARTH_KEEPALIVE_SECONDS", "600"))
+        app.state.keepalive_task = asyncio.create_task(
+            _keepalive(f"{issuer}/healthz", every))
+
+    @app.on_event("shutdown")
+    async def _stop_keepalive():
+        if app.state.keepalive_task:
+            app.state.keepalive_task.cancel()
 
     return app
 
