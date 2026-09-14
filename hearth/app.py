@@ -73,14 +73,28 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
     issuer = (issuer or os.getenv("HEARTH_ISSUER", "http://localhost:8000")).rstrip("/")
     resource = (resource or os.getenv("HEARTH_RESOURCE", f"{issuer}/mcp")).rstrip("/")
 
-    store = Store(data_path) if data_path else None
-    household = Household("home", store=store)
-    if seed:
-        seed_demo_household(household)
-    ledger = Ledger(household, store=store)
-    server = HearthMCP(household, ledger, extractor=extract,
-                       end_detector=detect_context_end)
     auth = AuthServer(issuer=issuer, resource=resource)
+
+    # One household per authenticated subject. A single shared house was fine
+    # while the only client was a test, and wrong the moment the thing was
+    # reachable: every visitor wrote into the same home, and the demo filled up
+    # with other people's thermostats.
+    homes: dict[str, tuple] = {}
+
+    def home_for(subject: str):
+        if subject not in homes:
+            st = Store(f"{data_path}.{subject}") if data_path else None
+            h = Household("home", store=st)
+            if seed:
+                seed_demo_household(h)
+            led = Ledger(h, store=st)
+            homes[subject] = (h, led, HearthMCP(h, led, extractor=extract,
+                                                end_detector=detect_context_end))
+        return homes[subject]
+
+    # The default household backs anything that arrives without a subject, and
+    # is what `app.state.household` exposes for tests and local tooling.
+    household, ledger, server = home_for("default")
 
     app = FastAPI(title="Hearth", version="0.1.0")
     app.state.household = household
@@ -155,8 +169,10 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
                                  "error_description": "bearer token must be in the "
                                                       "Authorization header"},
                                 status_code=400)
-        if auth.verify(request.headers.get("authorization")) is None:
+        caller = auth.verify(request.headers.get("authorization"))
+        if caller is None:
             return _unauthorized()
+        _, _, server = home_for(caller.subject)
 
         try:
             payload = json.loads(await request.body() or b"")
@@ -211,13 +227,15 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         return {"access_token": auth.issue_for_testing(subject="console"),
                 "token_type": "Bearer"}
 
-    def _state():
+    def _state(house=None, led=None):
         """Everything the console draws, resolved server-side.
 
         Resolution belongs here, not in the page: the console must show exactly
         what Alexa+ would be told, and a second implementation in JavaScript
         would drift from the real one and quietly lie on camera.
         """
+        household, ledger = (house or homes["default"][0],
+                             led or homes["default"][1])
         live = [b for b in household.beliefs if b.is_live()]
         slots, seen = [], set()
         for b in live:
@@ -266,47 +284,55 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
 
     @app.get("/api/state")
     async def api_state(request: Request):
-        if not _guard(request):
+        tok = auth.verify(request.headers.get("authorization"))
+        if tok is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        return _state()
+        return _state(*home_for(tok.subject)[:2])
 
     @app.post("/api/say")
     async def api_say(request: Request):
-        if not _guard(request):
+        tok = auth.verify(request.headers.get("authorization"))
+        if tok is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         body = await request.json()
         said, speaker = body.get("said", ""), body.get("speaker", "")
-        res = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                             "params": {"name": "remember",
-                                        "arguments": {"said": said, "speaker": speaker}}})
-        return {"reply": res["result"]["content"][0]["text"], "state": _state()}
+        h, led, srv = home_for(tok.subject)
+        res = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                          "params": {"name": "remember",
+                                     "arguments": {"said": said, "speaker": speaker}}})
+        return {"reply": res["result"]["content"][0]["text"], "state": _state(h, led)}
 
     @app.post("/api/act")
     async def api_act(request: Request):
         """Act on a slot the way Alexa+ would, and log why."""
-        if not _guard(request):
+        tok = auth.verify(request.headers.get("authorization"))
+        if tok is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         body = await request.json()
         domain, slot = body.get("domain"), body.get("slot")
         about = body.get("about")
-        mid = next((m.id for m in household.members.values()
+        h, led, _ = home_for(tok.subject)
+        mid = next((m.id for m in h.members.values()
                     if m.name.lower() == str(about or "").lower()), None)
-        r = household.resolve(domain, slot, for_member=mid)
+        r = h.resolve(domain, slot, for_member=mid)
         if r.winner is None:
-            return {"reply": f"Nobody has set {domain}.{slot}.", "state": _state()}
-        a = ledger.record(f"set {domain} {slot} to {r.winner.value}", domain,
-                          resolution=r)
+            return {"reply": f"Nobody has set {domain}.{slot}.", "state": _state(h, led)}
+        a = led.record(f"set {domain} {slot} to {r.winner.value}", domain,
+                       resolution=r)
         return {"reply": f"Set {domain}.{slot} to {r.winner.value}.",
-                "why": ledger.why(action_id=a.id), "state": _state()}
+                "why": led.why(action_id=a.id), "state": _state(h, led)}
 
     @app.post("/api/retire")
     async def api_retire(request: Request):
-        if not _guard(request):
+        tok = auth.verify(request.headers.get("authorization"))
+        if tok is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         body = await request.json()
-        b = household.retire(body.get("belief_id"), reason="stood down in the console")
+        h, led, _ = home_for(tok.subject)
+        b = h.retire(body.get("belief_id"), reason="stood down in the console")
         return {"reply": (f"Stood down {b.domain}.{b.slot}={b.value}." if b
-                          else "No standing belief with that id."), "state": _state()}
+                          else "No standing belief with that id."),
+                "state": _state(h, led)}
 
     # The add-on manifest requires HTTPS URLs for six icons, a carousel image,
     # a privacy policy and terms of use. Serving them from the service itself

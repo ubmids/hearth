@@ -183,6 +183,63 @@ def test_read_path_fits_the_500ms_budget():
     print(f"PASS read path worst round trip {worst:.1f}ms of 500ms budget")
 
 
+def test_two_households_never_see_each_other():
+    """Every authenticated subject gets its own home.
+
+    A single shared household was fine while the only client was a test and
+    wrong the moment the service was reachable: two people opening the demo
+    wrote into the same house, and a judge arriving third saw the wreckage of
+    the first two. In a real add-on the subject arrives from account linking,
+    and the same leak would be between actual families.
+    """
+    c, app = client()
+    alice = app.state.auth.issue_for_testing(subject="hh-alice")
+    bob = app.state.auth.issue_for_testing(subject="hh-bob")
+
+    def say(tok, said, who):
+        return c.post("/api/say", json={"said": said, "speaker": who},
+                      headers={"Authorization": f"Bearer {tok}"}).json()
+
+    say(alice, "keep it at 19", "Dad")
+    say(bob, "make it 26", "Dad")
+
+    def seen(tok):
+        r = c.get("/api/state", headers={"Authorization": f"Bearer {tok}"})
+        return [x["value"] for x in r.json()["slots"]]
+
+    assert seen(alice) == ["19"], seen(alice)
+    assert seen(bob) == ["26"], seen(bob)
+
+    # And through MCP, which is the path Alexa+ actually uses.
+    r = rpc(c, bob, "tools/call", {"name": "whats_true",
+                                   "arguments": {"domain": "thermostat",
+                                                 "slot": "target"}})
+    assert r.json()["result"]["content"][0]["text"].startswith("26")
+    print("PASS two households never see each other")
+
+
+def test_authorize_issues_a_distinct_household_each_time():
+    c, app = client()
+    subjects = set()
+    for _ in range(3):
+        verifier = secrets.token_urlsafe(48)
+        r = c.get("/authorize", params={
+            "client_id": app.state.auth.client_id,
+            "redirect_uri": "https://cb.test/done", "response_type": "code",
+            "code_challenge": s256(verifier), "code_challenge_method": "S256",
+            "resource": RESOURCE}, follow_redirects=False)
+        code = r.headers["location"].split("code=")[1].split("&")[0]
+        t = c.post("/token", data={"grant_type": "authorization_code", "code": code,
+                                   "code_verifier": verifier,
+                                   "client_id": app.state.auth.client_id,
+                                   "redirect_uri": "https://cb.test/done",
+                                   "resource": RESOURCE})
+        subjects.add(app.state.auth.verify(
+            f"Bearer {t.json()['access_token']}").subject)
+    assert len(subjects) == 3, subjects
+    print("PASS each authorisation opens its own household")
+
+
 def test_end_to_end_household_story():
     """The demo, driven entirely through MCP tool calls."""
     c, app = client()
