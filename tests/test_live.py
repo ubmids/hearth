@@ -101,7 +101,9 @@ def main():
             hashlib.sha256(verifier.encode("ascii")).digest()).decode().rstrip("=")
         client_id = asm.get("client_id_hint", "hearth-dev-client")
         q = urllib.parse.urlencode({
-            "client_id": client_id, "redirect_uri": "https://example.invalid/cb",
+            # The deployment registers an allowlist of redirect URIs, so a made
+            # up one is correctly refused. Authorise the way the console does.
+            "client_id": client_id, "redirect_uri": f"{BASE}/console",
             "response_type": "code", "code_challenge": challenge,
             "code_challenge_method": "S256", "resource": f"{BASE}/mcp",
             "state": "live"})
@@ -118,7 +120,7 @@ def main():
         form = urllib.parse.urlencode({
             "grant_type": "authorization_code", "code": code,
             "code_verifier": verifier, "client_id": client_id,
-            "redirect_uri": "https://example.invalid/cb",
+            "redirect_uri": f"{BASE}/console",
             "resource": f"{BASE}/mcp"}).encode()
         treq = urllib.request.Request(f"{BASE}/token", data=form, method="POST",
                                       headers={"Content-Type":

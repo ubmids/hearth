@@ -120,6 +120,24 @@ listing depends on no second host that could be down or parked during judging.
 pinned by `tests/test_manifest.py`, because each one is a silent rejection
 rather than a build error.
 
+### Before the add-on is registered, read this
+
+`HEARTH_REDIRECT_URIS` is an allowlist, and on the deployment it currently holds
+one entry: the console. That closes the open redirector, and it also means
+**any client whose callback is not on the list is refused**, which will include
+Alexa+ itself.
+
+When the add-on is registered and Amazon's callback URL is known, it has to be
+added to that variable and the service redeployed. Setting an environment
+variable through Render's API does **not** restart the process, so the value is
+read at the next deploy and not before; that cost an hour of a live service
+still handing codes to a hostile redirect after the fix was supposedly applied.
+
+Leaving the variable unset falls back to a shape check only (https, or
+loopback), which accepts any https URI. That is weaker, though PKCE means an
+attacker who captures a code cannot exchange it without the verifier. The
+allowlist is the right default and the one entry is the thing to remember.
+
 ### Still to do
 
 Only `alexa-ai deploy` and the demo video, both of which need an Amazon
