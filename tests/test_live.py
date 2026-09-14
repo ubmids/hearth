@@ -161,8 +161,22 @@ def main():
         p50, worst = statistics.median(samples), max(samples)
         check("warm round trip under 500ms", worst < 500,
               f"p50 {p50:.0f}ms, worst {worst:.0f}ms, one kept-alive connection")
-        print(f"        note: measured from this machine. Alexa+ calls from AWS, "
-              f"much closer to the service than you are.")
+
+        # The server reports its own cost on every response, so the network
+        # share can be separated from the application share no matter where the
+        # measurement is taken from.
+        conn2 = (http.client.HTTPSConnection if parsed.scheme == "https"
+                 else http.client.HTTPConnection)(parsed.netloc, timeout=30)
+        conn2.request("POST", "/mcp", body=body, headers=hdrs)
+        r2 = conn2.getresponse(); r2.read()
+        st = r2.getheader("Server-Timing", "")
+        conn2.close()
+        check("server reports its own timing", "app;dur=" in st, st or "(absent)")
+        if "app;dur=" in st:
+            app_ms = float(st.split("app;dur=")[1].split(";")[0])
+            print(f"        server spent {app_ms:.2f}ms. The other "
+                  f"{p50 - app_ms:.0f}ms of the p50 is the network between here "
+                  f"and it, which Alexa+ does not pay from AWS.")
 
     print()
     if failures:

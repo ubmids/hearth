@@ -9,6 +9,7 @@ commented with why, because three of them are traps:
 """
 import json
 import os
+import time
 import urllib.parse
 
 from fastapi import FastAPI, Request
@@ -128,14 +129,19 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
                                  "error": {"code": -32700, "message": "Parse error"}},
                                 status_code=400)
 
+        t0 = time.perf_counter()
         headers = {"MCP-Protocol-Version": PROTOCOL_VERSION}
         sid = request.headers.get("mcp-session-id")
 
         # A batch is a JSON array; a single call is an object. Both are valid.
+        def timed(content, status=200):
+            headers["Server-Timing"] = (
+                f'app;dur={(time.perf_counter() - t0) * 1000:.3f};desc="hearth"')
+            return JSONResponse(content, status_code=status, headers=headers)
+
         if isinstance(payload, list):
             out = [r for r in (server.handle(m) for m in payload) if r is not None]
-            return JSONResponse(out, headers=headers) if out else \
-                JSONResponse(None, status_code=202, headers=headers)
+            return timed(out) if out else timed(None, 202)
 
         if payload.get("method") == "initialize":
             sid = server.new_session()
@@ -146,9 +152,8 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
 
         result = server.handle(payload)
         if result is None:
-            # Notifications are accepted with no body.
-            return JSONResponse(None, status_code=202, headers=headers)
-        return JSONResponse(result, headers=headers)
+            return timed(None, 202)          # notifications are accepted with no body
+        return timed(result)
 
     # --- console surface ---------------------------------------------------
     # The console is an operator view, not a second way in. It speaks to the
