@@ -1,0 +1,35 @@
+# secrets: this repo goes public before submission, so nothing sensitive ever lands
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+credentials.json
+secrets.json
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# node
+node_modules/
+.expo/
+dist/
+build/
+*.tsbuildinfo
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+
+# local data
+data/
+out/
+tmp/
