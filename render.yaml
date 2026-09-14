@@ -1,0 +1,18 @@
+# Reproducible deploy. The CLI creates the same thing; this is here so the
+# service can be rebuilt from scratch without anyone remembering the flags.
+services:
+  - type: web
+    name: hearth
+    runtime: python
+    plan: starter          # NOT free: a free instance sleeps, and a cold start
+                           # blows the 500ms round trip Alexa+ requires.
+    healthCheckPath: /healthz
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn hearth.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: HEARTH_ISSUER
+        sync: false        # set to the service URL once it exists
+      - key: HEARTH_RESOURCE
+        sync: false

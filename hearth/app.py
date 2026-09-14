@@ -11,9 +11,9 @@ import json
 import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from .extract import extract
+from .extract import detect_context_end, extract
 from .household import Household
 from .ledger import Ledger
 from .mcp import PROTOCOL_VERSION, HearthMCP
@@ -40,7 +40,8 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
     if seed:
         seed_demo_household(household)
     ledger = Ledger(household, store=store)
-    server = HearthMCP(household, ledger, extractor=extract)
+    server = HearthMCP(household, ledger, extractor=extract,
+                       end_detector=detect_context_end)
     auth = AuthServer(issuer=issuer, resource=resource)
 
     app = FastAPI(title="Hearth", version="0.1.0")
@@ -140,6 +141,129 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
             # Notifications are accepted with no body.
             return JSONResponse(None, status_code=202, headers=headers)
         return JSONResponse(result, headers=headers)
+
+    # --- console surface ---------------------------------------------------
+    # The console is an operator view, not a second way in. It speaks to the
+    # same bearer-protected API, and the only concession to convenience is that
+    # a request arriving from the loopback interface can mint itself a token.
+    # A deployed Hearth hands out nothing.
+    def _is_local(request: Request) -> bool:
+        host = (request.client.host if request.client else "") or ""
+        return host in ("127.0.0.1", "::1", "localhost", "testclient")
+
+    def _guard(request: Request):
+        return auth.verify(request.headers.get("authorization")) is not None
+
+    @app.get("/api/console-token")
+    async def console_token(request: Request):
+        if not _is_local(request):
+            return JSONResponse({"error": "console tokens are loopback only"},
+                                status_code=403)
+        return {"access_token": auth.issue_for_testing(subject="console"),
+                "token_type": "Bearer"}
+
+    def _state():
+        """Everything the console draws, resolved server-side.
+
+        Resolution belongs here, not in the page: the console must show exactly
+        what Alexa+ would be told, and a second implementation in JavaScript
+        would drift from the real one and quietly lie on camera.
+        """
+        live = [b for b in household.beliefs if b.is_live()]
+        slots, seen = [], set()
+        for b in live:
+            key = (b.domain, b.slot)
+            if key in seen:
+                continue
+            seen.add(key)
+            # Household-wide view, plus a view per member who has a scoped belief.
+            audiences = [None] + sorted({x.scope for x in live
+                                         if (x.domain, x.slot) == key and x.scope})
+            for who in audiences:
+                r = household.resolve(b.domain, b.slot, for_member=who)
+                if r.winner is None:
+                    continue
+                slots.append({
+                    "domain": b.domain, "slot": b.slot,
+                    "about": household.name_of(who) if who else None,
+                    "value": r.winner.value, "basis": r.basis,
+                    "sentence": r.explain(household.name_of),
+                    "winner": {"id": r.winner.id,
+                               "holder": household.name_of(r.winner.holder),
+                               "context": r.winner.context,
+                               "stated_at": r.winner.stated_at},
+                    "losers": [{"id": lb.id, "value": lb.value,
+                                "holder": household.name_of(lb.holder),
+                                "reason": why} for lb, why in r.losers],
+                })
+        contexts = {}
+        for b in live:
+            if b.context:
+                contexts.setdefault(b.context, []).append(
+                    f"{b.domain}.{b.slot}={b.value}")
+        return {
+            "members": [{"id": m.id, "name": m.name, "role": m.role,
+                         "grants": m.grants} for m in household.members.values()],
+            "slots": slots,
+            "contexts": [{"name": k, "riding": v} for k, v in contexts.items()],
+            "beliefs": [{**b.to_dict(), "holder_name": household.name_of(b.holder),
+                         "live": b.is_live()} for b in household.beliefs],
+            # The spoken explanation is computed here for the same reason the
+            # resolution is: the console must show the exact sentence the
+            # assistant would say, not a second rendering of it that can drift.
+            "actions": [{**a.to_dict(), "why": ledger.why(action_id=a.id)}
+                        for a in reversed(ledger.actions)][:25],
+        }
+
+    @app.get("/api/state")
+    async def api_state(request: Request):
+        if not _guard(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return _state()
+
+    @app.post("/api/say")
+    async def api_say(request: Request):
+        if not _guard(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        body = await request.json()
+        said, speaker = body.get("said", ""), body.get("speaker", "")
+        res = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                             "params": {"name": "remember",
+                                        "arguments": {"said": said, "speaker": speaker}}})
+        return {"reply": res["result"]["content"][0]["text"], "state": _state()}
+
+    @app.post("/api/act")
+    async def api_act(request: Request):
+        """Act on a slot the way Alexa+ would, and log why."""
+        if not _guard(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        body = await request.json()
+        domain, slot = body.get("domain"), body.get("slot")
+        about = body.get("about")
+        mid = next((m.id for m in household.members.values()
+                    if m.name.lower() == str(about or "").lower()), None)
+        r = household.resolve(domain, slot, for_member=mid)
+        if r.winner is None:
+            return {"reply": f"Nobody has set {domain}.{slot}.", "state": _state()}
+        a = ledger.record(f"set {domain} {slot} to {r.winner.value}", domain,
+                          resolution=r)
+        return {"reply": f"Set {domain}.{slot} to {r.winner.value}.",
+                "why": ledger.why(action_id=a.id), "state": _state()}
+
+    @app.post("/api/retire")
+    async def api_retire(request: Request):
+        if not _guard(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        body = await request.json()
+        b = household.retire(body.get("belief_id"), reason="stood down in the console")
+        return {"reply": (f"Stood down {b.domain}.{b.slot}={b.value}." if b
+                          else "No standing belief with that id."), "state": _state()}
+
+    @app.get("/console", response_class=HTMLResponse)
+    async def console():
+        path = os.path.join(os.path.dirname(__file__), "web", "console.html")
+        with open(path) as f:
+            return HTMLResponse(f.read())
 
     @app.get("/healthz")
     async def healthz():

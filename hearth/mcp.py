@@ -129,10 +129,11 @@ TOOLS = [
 class HearthMCP:
     """Dispatches MCP JSON-RPC against a Household and its Ledger."""
 
-    def __init__(self, household, ledger, extractor=None):
+    def __init__(self, household, ledger, extractor=None, end_detector=None):
         self.h = household
         self.ledger = ledger
         self.extract = extractor
+        self.detect_end = end_detector
         self.sessions: dict[str, float] = {}
 
     # --- session -----------------------------------------------------------
@@ -195,10 +196,24 @@ class HearthMCP:
         return {m.name: mid for mid, m in self.h.members.items()}
 
     # --- tools -------------------------------------------------------------
+    def _open_contexts(self):
+        return sorted({b.context for b in self.h.beliefs if b.context and b.is_live()})
+
     def _tool_remember(self, said, speaker):
         holder = self._member_id(speaker)
         if holder is None:
             holder = self.h.add_member(speaker).id      # a new voice in the house
+
+        # A sentence can close a situation as easily as it can open one, and the
+        # closing is the half that gets forgotten. Check it first: "Gran's gone
+        # home" is not a new belief, it is the end of several old ones.
+        ending = self.detect_end(said, self._open_contexts()) if self.detect_end else None
+        if ending:
+            ended = self.h.end_context(ending)
+            return _text(f"Understood, {ending} is over. {len(ended)} belief(s) "
+                         "stopped applying: "
+                         + "; ".join(f"{b.domain}.{b.slot}={b.value}" for b in ended))
+
         found = (self.extract or (lambda t, n: []))(said, self._names())
         if not found:
             return _text(f"Nothing durable to remember in that, from {speaker}.")

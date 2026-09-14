@@ -134,3 +134,54 @@ def llm_extract(text: str, member_names: dict | None = None) -> list[dict]:
 
 def extract(text: str, member_names: dict | None = None) -> list[dict]:
     return llm_extract(text, member_names)
+
+
+# --- context endings -------------------------------------------------------
+# A context that can open but never close is a leak: the belief rides forever
+# and the house quietly obeys a rule nobody remembers setting. Detecting the
+# ending is the same problem as detecting the opening, and it was missing.
+
+END_PATTERNS = [
+    r"\b([\w' ]+?) (?:has |have )?(?:gone|went) home\b",
+    r"\b([\w' ]+?)(?:'s)? (?:visit|stay) is over\b",
+    r"\bthe (cold snap|heatwave|half term|flu) (?:is|has) (?:over|ended|passed|broken)\b",
+    # Captures the weather word so it can be matched against an open context
+    # by name: "cold" lands on "the cold snap", and on nothing if none is open.
+    r"\b(?:it'?s|it is|its) (?:not |no longer )(cold|hot|warm|freezing) ?(?:any ?more)?\b",
+    r"\b([\w' ]+?) (?:is|are) better now\b",
+    r"\bstop (?:with )?the ([\w' ]+?)(?: thing)?\b",
+]
+
+
+def detect_context_end(text: str, open_contexts: list[str]) -> str | None:
+    """Return the open context this sentence closes, if any.
+
+    Matched against the contexts actually open, not in the abstract: "Gran's
+    gone home" should close "Gran's visit" and nothing else, and a sentence that
+    names a context nobody opened closes nothing.
+    """
+    if not open_contexts:
+        return None
+    low = text.lower()
+
+    # Direct naming first: "the cold snap is over" against context "the cold snap".
+    for ctx in open_contexts:
+        bare = ctx.lower().removeprefix("the ").removesuffix("'s visit")
+        if re.search(rf"\b{re.escape(ctx.lower())}\b.*\b(over|ended|done|finished|passed|broken)\b", low) \
+           or re.search(rf"\b{re.escape(bare)}\b.*\b(over|ended|done|finished|passed|broken|gone home)\b", low):
+            return ctx
+
+    # Then the patterns, mapping whatever they capture back onto an open context.
+    for pat in END_PATTERNS:
+        m = re.search(pat, low)
+        if not m:
+            continue
+        subject = (m.group(1) if m.groups() else "").strip()
+        for ctx in open_contexts:
+            c = ctx.lower()
+            if subject and (subject in c or c.removesuffix("'s visit") == subject
+                            or c.removeprefix("the ") == subject):
+                return ctx
+        if not subject and len(open_contexts) == 1:
+            return open_contexts[0]
+    return None
