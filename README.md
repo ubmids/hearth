@@ -54,7 +54,8 @@ Core, transport and auth are done and tested. 18 tests green.
 - Action ledger answering "why did you do that?"
 - MCP 2025-11-25 over Streamable HTTP, hand-rolled, 7 tools
 - OAuth 2.1 authorization code flow with PKCE S256, both well-known documents
-- Read path measured at 0.8ms against the 500ms Alexa+ round-trip budget
+- Read path: the server stamps every MCP response with `Server-Timing`, so its
+  own cost is checkable by anyone from anywhere rather than asserted here
 
 Three conformance details Alexa+ requires that a general-purpose MCP SDK gets
 wrong by default, each asserted in `tests/test_conformance.py`:
@@ -62,6 +63,44 @@ wrong by default, each asserted in `tests/test_conformance.py`:
 1. the `401` must carry **no** `WWW-Authenticate` header, against RFC 9728 convention
 2. **both** well-known documents are required, not only the RFC 9728 one
 3. a bearer token arriving in the query string must be refused, not accepted
+
+## Live
+
+https://hearth-sh3u.onrender.com — console at `/console`, MCP at `/mcp`.
+
+`python3 tests/test_live.py https://hearth-sh3u.onrender.com` runs the whole
+conformance suite against the deployment, including a real OAuth 2.1 PKCE
+exchange over the wire.
+
+### Latency, measured rather than claimed
+
+Amazon requires "a round-trip query response latency of less than 500 ms."
+
+| measured from | p50 | worst |
+|---|---|---|
+| the server's own `Server-Timing` header | 0.04ms | 0.05ms |
+| a datacentre in Helsinki | 201ms | 211ms |
+| a home connection in Lagos | 329ms | 680ms |
+
+The server's contribution is four hundredths of a millisecond. Everything else
+is distance. It passes comfortably from a datacentre and fails from the author's
+home, and the second number is the irrelevant one, because Alexa+ calls from AWS
+and not from Lagos.
+
+Two earlier versions of this measurement were wrong and are worth recording. The
+first ran in-process and reported 0.8ms, which proved nothing about a network
+requirement. The second opened a fresh TCP and TLS connection per request, which
+from a distant client is two full round trips of pure handshake before the
+server sees anything, and reported 618ms. A real MCP client holds the connection
+open, which is what Streamable HTTP is for.
+
+### Cold start
+
+The deployment is on a free instance, which sleeps after 15 minutes idle. First
+byte after a sleep was 641ms, over the requirement, and that is exactly what a
+judge opening the link after a quiet night would hit. The fix is the Starter
+plan, which does not sleep. Until then `.github/workflows/keep-warm.yml` pings
+it, which is a mitigation and not a fix.
 
 Still to do: detecting context-ending utterances ("the cold snap is over") on the
 extraction path rather than calling `end_context` directly, the add-on manifest
