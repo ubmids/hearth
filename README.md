@@ -25,8 +25,47 @@ On top sits the **action ledger**: every autonomous action is recorded against t
 memories that justified it. Ask "why did you do that?" and get a real chain. Retire one
 belief and the behaviour changes.
 
+## Run it
+
+```bash
+pip install -r requirements.txt
+python3 demo.py                      # the twenty-second story, no key, no network
+python3 tests/test_contest.py        # 6 household situations an ordinary store gets wrong
+python3 tests/test_conformance.py    # 12 Alexa+ conformance requirements
+uvicorn hearth.app:app --port 8000   # the MCP server
+```
+
+To reach it from Alexa+, expose it and register the add-on:
+
+```bash
+cloudflared tunnel --url http://localhost:8000
+alexa-ai new mcp --name "Hearth" --mcp-server-url https://<tunnel>/mcp
+```
+
+Everything runs with no API key. The extraction write path uses a deterministic
+rule extractor when no model is configured, and that is what CI runs.
+
 ## Status
-Scaffold. See `docs/SPEC.md`.
+
+Core, transport and auth are done and tested. 18 tests green.
+
+- Beliefs with provenance, scope, context and expiry
+- Contest resolution by scope, then authority, then recency, each with a spoken reason
+- Action ledger answering "why did you do that?"
+- MCP 2025-11-25 over Streamable HTTP, hand-rolled, 7 tools
+- OAuth 2.1 authorization code flow with PKCE S256, both well-known documents
+- Read path measured at 0.8ms against the 500ms Alexa+ round-trip budget
+
+Three conformance details Alexa+ requires that a general-purpose MCP SDK gets
+wrong by default, each asserted in `tests/test_conformance.py`:
+
+1. the `401` must carry **no** `WWW-Authenticate` header, against RFC 9728 convention
+2. **both** well-known documents are required, not only the RFC 9728 one
+3. a bearer token arriving in the query string must be refused, not accepted
+
+Still to do: detecting context-ending utterances ("the cold snap is over") on the
+extraction path rather than calling `end_context` directly, the add-on manifest
+and icons, and a deployment.
 
 ## Built for
 Build, Ship, Shape: Amazon Developer Hackathon 2026, Alexa+ track. Deadline 23 Oct 2026.
