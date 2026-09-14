@@ -9,6 +9,7 @@ commented with why, because three of them are traps:
 """
 import json
 import os
+import urllib.parse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -79,7 +80,14 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
 
     @app.post("/token")
     async def token(request: Request):
-        form = await request.form()
+        # Parsed by hand rather than with `await request.form()`, which pulls in
+        # python-multipart. That package is not a FastAPI dependency, so the
+        # endpoint works on any machine that happens to have it and returns 500
+        # on one that does not. It cost a deploy to find. An OAuth token request
+        # is always application/x-www-form-urlencoded and never multipart, so
+        # the dependency bought nothing and could only ever fail in production.
+        raw = (await request.body()).decode("utf-8", "replace")
+        form = {k: v[0] for k, v in urllib.parse.parse_qs(raw, keep_blank_values=True).items()}
         body, err = auth.exchange(
             grant_type=form.get("grant_type", ""),
             code=form.get("code", ""),
