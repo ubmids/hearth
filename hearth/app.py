@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import phrasing
 from .extract import detect_context_end, extract
 from .household import Household
 from .ledger import Ledger
@@ -270,31 +271,61 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
                 r = household.resolve(b.domain, b.slot, for_member=who)
                 if r.winner is None:
                     continue
+                about = household.name_of(who) if who else None
                 slots.append({
                     "domain": b.domain, "slot": b.slot,
-                    "about": household.name_of(who) if who else None,
+                    "about": about,
+                    # The household-facing half of the row. Computed here rather
+                    # than in the page for the same reason the resolution is:
+                    # one rendering, shared by whatever draws it. Only the three
+                    # the surface draws: a key nothing reads is a key that can
+                    # rot without anything noticing.
+                    **{k: v for k, v in phrasing.describe(
+                        b.domain, b.slot, r.winner.value, about).items()
+                       if k in ("title", "reading", "statement")},
                     "value": r.winner.value, "basis": r.basis,
-                    "sentence": r.explain(household.name_of),
+                    "verdict": phrasing.verdict(
+                        r.basis, winner=household.name_of(r.winner.holder),
+                        about=about, domain=b.domain, slot=b.slot),
+                    "sentence": r.explain(household.name_of,
+                                          phrasing.value_spoken),
                     "winner": {"id": r.winner.id,
                                "holder": household.name_of(r.winner.holder),
                                "context": r.winner.context,
                                "stated_at": r.winner.stated_at},
                     "losers": [{"id": lb.id, "value": lb.value,
+                                "reading": phrasing.reading(lb.domain, lb.slot,
+                                                            lb.value),
                                 "holder": household.name_of(lb.holder),
                                 "reason": why} for lb, why in r.losers],
                 })
         contexts = {}
         for b in live:
             if b.context:
-                contexts.setdefault(b.context, []).append(
-                    f"{b.domain}.{b.slot}={b.value}")
+                # `riding` is the machine's list and `holds` the household's.
+                # Both, because the first is what an operator greps for and the
+                # second is what anyone else can actually read.
+                riding, holds = contexts.setdefault(b.context, ([], []))
+                riding.append(f"{b.domain}.{b.slot}={b.value}")
+                holds.append(phrasing.statement(
+                    b.domain, b.slot, b.value,
+                    household.name_of(b.scope) if b.scope else None))
         return {
             "members": [{"id": m.id, "name": m.name, "role": m.role,
-                         "grants": m.grants} for m in household.members.values()],
+                         "grants": m.grants,
+                         "authority": phrasing.authority_line(m.grants)}
+                        for m in household.members.values()],
             "slots": slots,
-            "contexts": [{"name": k, "riding": v} for k, v in contexts.items()],
+            "contexts": [{"name": k, "riding": v[0], "holds": v[1]}
+                         for k, v in contexts.items()],
             "beliefs": [{**b.to_dict(), "holder_name": household.name_of(b.holder),
-                         "live": b.is_live()} for b in household.beliefs],
+                         "live": b.is_live(),
+                         "standing": phrasing.standing(b.is_live(), b.status,
+                                                       b.ended_reason),
+                         "said": phrasing.said(
+                             b.domain, b.slot, b.value, b.content,
+                             household.name_of(b.scope) if b.scope else None)}
+                        for b in household.beliefs],
             # The spoken explanation is computed here for the same reason the
             # resolution is: the console must show the exact sentence the
             # assistant would say, not a second rendering of it that can drift.
@@ -317,10 +348,34 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         body = await request.json()
         said, speaker = body.get("said", ""), body.get("speaker", "")
         h, led, srv = home_for(tok.subject)
+        # What the tool did is read off the house rather than parsed back out of
+        # its reply, so the console can say it in the household's words without
+        # a second copy of the write path. `reply` is still the exact text the
+        # tool returned, because that is what Alexa+ would hear.
+        before = {b.id for b in h.beliefs}
+        was_live = {b.id for b in h.beliefs if b.is_live()}
         res = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                           "params": {"name": "remember",
                                      "arguments": {"said": said, "speaker": speaker}}})
-        return {"reply": res["result"]["content"][0]["text"], "state": _state(h, led)}
+        raw = res["result"]["content"][0]["text"]
+        added = [b for b in h.beliefs if b.id not in before]
+        ended = [b for b in h.beliefs if b.id in was_live and not b.is_live()]
+
+        def phrase(b):
+            return phrasing.statement(b.domain, b.slot, b.value,
+                                      h.name_of(b.scope) if b.scope else None)
+
+        if added:
+            line = phrasing.confirm([phrase(b) for b in added], speaker=speaker,
+                                    context=added[0].context)
+        elif ended:
+            line = phrasing.closed(ended[0].ended_reason.removeprefix(
+                "context ended: "), [phrase(b) for b in ended])
+        else:
+            # Nothing changed, so the tool's own sentence is already the whole
+            # answer and any rewording here would only be a worse copy of it.
+            line = raw
+        return {"reply": raw, "line": line, "state": _state(h, led)}
 
     @app.post("/api/act")
     async def api_act(request: Request):
@@ -334,12 +389,21 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         h, led, _ = home_for(tok.subject)
         mid = next((m.id for m in h.members.values()
                     if m.name.lower() == str(about or "").lower()), None)
+        # Only a name that belongs to somebody who lives here gets to colour the
+        # sentence. A stranger resolves household-wide, so saying "Gran's
+        # thermostat" would describe an answer nobody was given.
+        named = h.name_of(mid) if mid else None
         r = h.resolve(domain, slot, for_member=mid)
         if r.winner is None:
-            return {"reply": f"Nobody has set {domain}.{slot}.", "state": _state(h, led)}
-        a = led.record(f"set {domain} {slot} to {r.winner.value}", domain,
-                       resolution=r)
-        return {"reply": f"Set {domain}.{slot} to {r.winner.value}.",
+            return {"reply": f"Nobody has set {phrasing.subject(domain, slot, named)}.",
+                    "state": _state(h, led)}
+        # The raw value, not the spoken one: a record of what was done has to say
+        # what the device was actually given. "Dinner is at five" is the right
+        # thing to read on a card and the wrong thing to find in a log.
+        a = led.record(f"set {phrasing.subject(domain, slot, named)} "
+                       f"to {r.winner.value}", domain, resolution=r)
+        return {"reply": f"Set {phrasing.subject(domain, slot, named)} "
+                         f"to {r.winner.value}.",
                 "why": led.why(action_id=a.id), "state": _state(h, led)}
 
     @app.post("/api/retire")
@@ -350,8 +414,10 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         body = await request.json()
         h, led, _ = home_for(tok.subject)
         b = h.retire(body.get("belief_id"), reason="stood down in the console")
-        return {"reply": (f"Stood down {b.domain}.{b.slot}={b.value}." if b
-                          else "No standing belief with that id."),
+        return {"reply": ((f"Stood down {phrasing.possessive(h.name_of(b.holder))} "
+                           f"{b.value} for "
+                           f"{phrasing.subject(b.domain, b.slot, h.name_of(b.scope) if b.scope else None)}.")
+                          if b else "No standing belief with that id."),
                 "state": _state(h, led)}
 
     # The add-on manifest requires HTTPS URLs for six icons, a carousel image,

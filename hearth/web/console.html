@@ -46,28 +46,32 @@
        font:11px/1 var(--mono);color:var(--muted);flex:none}
   .who b{font-weight:560}
   .who small{display:block;color:var(--dim);font-size:12px}
-  .owns{color:var(--ember);font:11px/1.4 var(--mono)}
+  .owns{color:var(--ember);font-size:11.5px;line-height:1.4}
+  .nosay{color:var(--dim);font-size:11.5px;line-height:1.4}
 
   .ctx{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--ember-dim);
        border-radius:0 7px 7px 0;padding:10px 12px;margin-bottom:9px}
   .ctx b{font-weight:560;font-size:13.5px}
-  .ctx small{display:block;color:var(--dim);font:11.5px/1.6 var(--mono);margin-top:3px}
+  .ctx small{display:block;color:var(--muted);font-size:12px;line-height:1.5;margin-top:3px}
 
   .slot{background:var(--panel);border:1px solid var(--line);border-radius:10px;
         padding:17px 19px;margin-bottom:13px}
   .slot-top{display:flex;align-items:flex-start;gap:14px}
-  .slot-name{font:12px/1 var(--mono);color:var(--muted);letter-spacing:.02em}
-  .slot-about{color:var(--ember);font:11px/1 var(--mono)}
+  .slot-name{font-size:12px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+             color:var(--muted)}
   .val{font-size:29px;font-weight:620;letter-spacing:-.025em;margin:7px 0 0;line-height:1}
-  .said{color:var(--muted);font-size:13.5px;margin:9px 0 0}
+  /* The explanation is the product, so it is set at reading size in the page's
+     own ink rather than as a caption under the number. */
+  .said{color:var(--ink);font-size:15px;line-height:1.5;margin:11px 0 0}
   .said b{color:var(--ink);font-weight:560}
-  .basis{margin-left:auto;flex:none;font:10px/1 var(--mono);letter-spacing:.09em;
-         text-transform:uppercase;color:var(--dim);border:1px solid var(--line);
-         border-radius:999px;padding:5px 8px}
+  .basis{margin-left:auto;flex:none;font-size:11px;letter-spacing:.04em;
+         color:var(--ember);border:1px solid var(--ember-dim);
+         border-radius:999px;padding:5px 10px;white-space:nowrap}
   .contest{margin-top:13px;border-top:1px dashed var(--line);padding-top:11px}
+  .verdict{margin:0 0 8px;font-size:13.5px;font-weight:560;color:var(--ink)}
   .row{display:flex;gap:9px;align-items:baseline;font-size:13px;padding:3px 0}
-  .row .v{font:12px/1.4 var(--mono);color:var(--lose);min-width:58px}
-  .row .r{color:var(--dim)}
+  .row .v{color:var(--lose);min-width:58px;font-weight:560}
+  .row .r{color:var(--muted)}
   .row.w .v{color:var(--win)}
   .acts{margin-top:13px;display:flex;gap:8px;flex-wrap:wrap}
 
@@ -98,17 +102,11 @@
   .act small{color:var(--dim);font-size:12.5px;display:block;margin-top:4px}
   .act time{font:10.5px/1 var(--mono);color:var(--dim)}
 
-  .belief{display:flex;gap:9px;align-items:baseline;padding:6px 0;font-size:12.5px;
-          border-bottom:1px solid var(--line);min-width:0}
-  .belief .k{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .belief .n{color:var(--dim);flex:none;max-width:5ch;overflow:hidden;
-             text-overflow:ellipsis;white-space:nowrap}
+  .belief{padding:8px 0;border-bottom:1px solid var(--line);min-width:0}
   .belief:last-child{border-bottom:0}
-  .belief .s{font:9.5px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
-             color:var(--dim);min-width:34px;flex:none}
-  .belief.dead{color:var(--dim)}
-  .belief.dead .k{text-decoration:line-through}
-  .k{font:12px/1.5 var(--mono)}
+  .belief .q{font-size:13px;line-height:1.45;color:var(--ink)}
+  .belief .m{color:var(--dim);font-size:11.5px;margin-top:3px}
+  .belief.dead .q{color:var(--lose)}
   .empty{color:var(--dim);font-size:13px;font-style:italic}
   @media (max-width:1080px){
     main{grid-template-columns:1fr;height:auto;overflow:visible}
@@ -185,44 +183,53 @@ async function api(path, body) {
 function render(s) {
   STATE = s;
 
+  // Nothing below phrases a belief. Every sentence on this page arrives already
+  // written by hearth/phrasing.py, because a second rendering here would drift
+  // from the one Alexa+ is given and the console would stop being evidence.
   $("#members").innerHTML = s.members.map(m => `
     <div class="who">
       <div class="dot">${esc(m.name.slice(0,2).toUpperCase())}</div>
       <div><b>${esc(m.name)}</b>
-        <small>${esc(m.role)}${m.grants.length ? "" : " · no domain of their own"}</small>
-        ${m.grants.length ? `<div class="owns">owns ${m.grants.map(esc).join(", ")}</div>` : ""}
+        <small>${esc(m.role)}</small>
+        <div class="${m.grants.length ? "owns" : "nosay"}">${esc(m.authority)}</div>
       </div>
     </div>`).join("");
 
   $("#contexts").innerHTML = s.contexts.length ? s.contexts.map(c => `
-    <div class="ctx"><b>${esc(c.name)}</b>
-      <small>${c.riding.map(esc).join("<br>")}</small></div>`).join("")
+    <div class="ctx"><b>While ${esc(c.name)} lasts</b>
+      <small>${c.holds.map(esc).join("<br>")}</small></div>`).join("")
     : `<div class="empty">Nothing is riding on a situation.</div>`;
 
   $("#slots").innerHTML = s.slots.length ? s.slots.map(x => `
     <div class="slot">
       <div class="slot-top">
         <div>
-          <div class="slot-name">${esc(x.domain)}.${esc(x.slot)}
-            ${x.about ? `<span class="slot-about">· for ${esc(x.about)}</span>` : ""}</div>
-          <div class="val">${esc(x.value)}</div>
+          <!-- The title already carries the name when a row is about one
+               person ("Ada's dinner"), so nothing repeats it here. -->
+          <div class="slot-name">${esc(x.title)}</div>
+          <!-- The reading is short enough to take in at a glance and short
+               enough to be ambiguous read alone, so the sentence goes with it
+               for anyone hearing the page rather than looking at it. -->
+          <div class="val" title="${esc(x.statement)}"
+               aria-label="${esc(x.statement)}">${esc(x.reading)}</div>
         </div>
-        ${x.losers.length ? `<div class="basis">won on ${esc(x.basis)}</div>` : ""}
+        ${x.losers.length ? `<div class="basis">${esc(x.verdict.chip)}</div>` : ""}
       </div>
       <p class="said">${esc(x.sentence)}</p>
       ${x.losers.length ? `
         <div class="contest">
-          <div class="row w"><span class="v">${esc(x.value)}</span>
+          <p class="verdict">${esc(x.verdict.line)}</p>
+          <div class="row w"><span class="v">${esc(x.reading)}</span>
             <span class="r">${esc(x.winner.holder)}, ${ago(x.winner.stated_at)}${
               x.winner.context ? `, during ${esc(x.winner.context)}` : ""}</span></div>
-          ${x.losers.map(l => `<div class="row"><span class="v">${esc(l.value)}</span>
+          ${x.losers.map(l => `<div class="row"><span class="v">${esc(l.reading)}</span>
             <span class="r">${esc(l.holder)}, but ${esc(l.reason)}</span></div>`).join("")}
         </div>` : ""}
       <div class="acts">
         <button onclick="act('${x.domain}','${x.slot}',${x.about ? `'${esc(x.about)}'` : "null"})">
-          Act on this</button>
+          Do this now</button>
         ${x.losers.map(l => `<button class="ghost" onclick="retire('${l.id}')">
-          stand down ${esc(l.holder)}'s ${esc(l.value)}</button>`).join("")}
+          stand down ${esc(l.holder)}'s ${esc(l.reading)}</button>`).join("")}
       </div>
     </div>`).join("")
     : `<div class="empty">Nobody has said anything yet. Try
@@ -230,9 +237,8 @@ function render(s) {
 
   $("#beliefs").innerHTML = s.beliefs.slice().reverse().map(b => `
     <div class="belief ${b.live ? "" : "dead"}">
-      <span class="s">${b.live ? "live" : esc(b.status)}</span>
-      <span class="k">${esc(b.domain)}.${esc(b.slot)}=${esc(b.value)}</span>
-      <span class="n">${esc(b.holder_name)}</span>
+      <div class="q">${esc(b.said)}</div>
+      <div class="m">${esc(b.holder_name)} · ${esc(b.standing)}</div>
     </div>`).join("") || `<div class="empty">Nothing yet.</div>`;
 
   $("#ledger").innerHTML = s.actions.length ? s.actions.map(a => `
@@ -253,7 +259,9 @@ async function say() {
   if (!said) return;
   $("#said").value = "";
   const r = await api("/api/say", {said, speaker: $("#speaker").value});
-  $("#reply").innerHTML = "<b>&rsaquo;</b> " + esc(r.reply);
+  // `line` is the same event in the household's words; `reply` is the exact
+  // text the MCP tool returned, which is what Alexa+ would hear.
+  $("#reply").innerHTML = "<b>&rsaquo;</b> " + esc(r.line || r.reply);
   render(r.state);
 }
 

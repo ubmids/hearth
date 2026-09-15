@@ -154,18 +154,26 @@ class Resolution:
     losers: list = field(default_factory=list)   # [(Belief, reason)]
     basis: str = ""                              # the rule that decided it
 
-    def explain(self, name_of) -> str:
-        """Plain sentence a voice assistant can say out loud."""
+    def explain(self, name_of, say=None) -> str:
+        """Plain sentence a voice assistant can say out loud.
+
+        `say` renders a belief's value. It defaults to the value as stored,
+        which is what the MCP tools answer with, and the surfaces a person reads
+        pass hearth.phrasing so the sentence says "19 degrees" and "five" rather
+        than 19 and 17:00. The hook lives here rather than a phrasing import
+        because the model layer must not depend on how anything is worded.
+        """
         if self.winner is None:
             return "Nobody has set that."
+        say = say or (lambda b: b.value)
         who, when = name_of(self.winner.holder), _ago(self.winner.stated_at)
         line = f"{who} set it {when}"
         if self.winner.context:
             line += f", during {self.winner.context}"
-        line += f", to {self.winner.value}."
+        line += f", to {say(self.winner)}."
         if self.losers:
             b, why = self.losers[0]
-            line += f" {name_of(b.holder)} said {b.value}, but {why}."
+            line += f" {name_of(b.holder)} said {say(b)}, but {why}."
         return line
 
     def to_dict(self) -> dict:

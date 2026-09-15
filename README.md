@@ -30,8 +30,9 @@ belief and the behaviour changes.
 ```bash
 pip install -r requirements.txt
 python3 demo.py                      # the twenty-second story, no key, no network
-python3 tests/test_contest.py        # 6 household situations an ordinary store gets wrong
-python3 tests/test_conformance.py    # 12 Alexa+ conformance requirements
+python3 tests/test_contest.py        # household situations an ordinary store gets wrong
+python3 tests/test_conformance.py    # Alexa+ conformance requirements
+python3 tests/test_phrasing.py       # the house is spoken to in its own words
 uvicorn hearth.app:app --port 8000   # the MCP server
 ```
 
@@ -47,11 +48,15 @@ rule extractor when no model is configured, and that is what CI runs.
 
 ## Status
 
-Core, transport and auth are done and tested. 18 tests green.
+Core, transport, auth and wording are done and tested. 120 tests green.
 
 - Beliefs with provenance, scope, context and expiry
 - Contest resolution by scope, then authority, then recency, each with a spoken reason
 - Action ledger answering "why did you do that?"
+- One server-side phrasing layer, so nothing anybody reads names a domain
+  or a slot: `thermostat.target = 19` is "The thermostat is set to 19 degrees",
+  `meals.dinner = 17:00` is "Dinner is at five", and a domain the household
+  invented this morning still gets a sentence
 - MCP 2025-11-25 over Streamable HTTP, hand-rolled, 7 tools
 - OAuth 2.1 authorization code flow with PKCE S256, both well-known documents
 - Read path: the server stamps every MCP response with `Server-Timing`, so its

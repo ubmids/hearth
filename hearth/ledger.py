@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from .models import Resolution
+from .phrasing import value_spoken
 
 
 @dataclass
@@ -75,7 +76,8 @@ class Ledger:
             return "I have not done anything like that."
         if a.resolution is None:
             return f"I {a.what}, but I did not record what that was based on."
-        return f"I {a.what} because " + a.resolution.explain(self.household.name_of)
+        return (f"I {a.what} because "
+                + a.resolution.explain(self.household.name_of, value_spoken))
 
     def _find(self, action_id):
         return next((a for a in self.actions if a.id == action_id), None)
