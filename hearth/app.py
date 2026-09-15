@@ -275,14 +275,11 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
                 slots.append({
                     "domain": b.domain, "slot": b.slot,
                     "about": about,
-                    # The household-facing half of the row. Computed here rather
-                    # than in the page for the same reason the resolution is:
-                    # one rendering, shared by whatever draws it. Only the three
-                    # the surface draws: a key nothing reads is a key that can
-                    # rot without anything noticing.
-                    **{k: v for k, v in phrasing.describe(
-                        b.domain, b.slot, r.winner.value, about).items()
-                       if k in ("title", "reading", "statement")},
+                    # The household-facing half of the row: title, reading and
+                    # statement. Computed here rather than in the page for the
+                    # same reason the resolution is, one rendering shared by
+                    # whatever draws it.
+                    **phrasing.describe(b.domain, b.slot, r.winner.value, about),
                     "value": r.winner.value, "basis": r.basis,
                     "verdict": phrasing.verdict(
                         r.basis, winner=household.name_of(r.winner.holder),

@@ -196,10 +196,14 @@ def statement(domain: str, slot: str, value: str, about: str | None = None) -> s
 
 
 def describe(domain: str, slot: str, value: str, about: str | None = None) -> dict:
-    """Everything the surface needs to name one setting without naming a slot."""
+    """Everything the surface needs to name one setting without naming a slot.
+
+    Exactly what a surface draws and nothing besides: this goes into the console
+    payload whole, and a key nothing reads is a key that can rot for weeks with
+    every test still green. Anything else about the setting has its own function.
+    """
     s = subject(domain, slot, about)
     return {
-        "subject": s,
         "title": f"{s[:1].upper()}{s[1:]}",
         "reading": reading(domain, slot, value),
         "statement": statement(domain, slot, value, about),
