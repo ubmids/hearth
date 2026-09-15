@@ -224,7 +224,7 @@ def test_two_households_never_see_each_other():
     r = rpc(c, bob, "tools/call", {"name": "whats_true",
                                    "arguments": {"domain": "thermostat",
                                                  "slot": "target"}})
-    assert r.json()["result"]["content"][0]["text"].startswith("26")
+    assert "26 degrees" in r.json()["result"]["content"][0]["text"]
     print("PASS two households never see each other")
 
 
@@ -263,7 +263,7 @@ def test_end_to_end_household_story():
     print("  ", call("remember", said="make it 23 while Gran is staying", speaker="Ada"))
     truth = call("whats_true", domain="thermostat", slot="target")
     print("   whats_true ->", truth)
-    assert truth.startswith("19"), truth          # Dad owns the thermostat
+    assert "19 degrees" in truth, truth           # Dad owns the thermostat
 
     print("  ", call("did", what="set the thermostat to 19",
                      domain="thermostat", slot="target"))
@@ -834,14 +834,19 @@ def test_a_belief_about_one_person_stays_apart_through_the_tools():
     said_by(c, tok, "remember", said="we eat at 19:00", speaker="Mum")
     said_by(c, tok, "remember", said="dinner for Ada is at 17:00", speaker="Mum")
 
-    assert said_by(c, tok, "whats_true", domain="meals",
-                   slot="dinner").startswith("19:00")
+    # The tool answers in a sentence rather than a raw value, because the
+    # result is prose a model reads before it says something out loud. What
+    # matters here is which time it names, not how it is spelled.
+    house_answer = said_by(c, tok, "whats_true", domain="meals", slot="dinner")
+    assert "seven" in house_answer and "five" not in house_answer, house_answer
     for who in ("Ada", "ada"):                    # names are said, not typed
-        assert said_by(c, tok, "whats_true", domain="meals", slot="dinner",
-                       about=who).startswith("17:00"), who
+        ada = said_by(c, tok, "whats_true", domain="meals", slot="dinner",
+                      about=who)
+        assert "five" in ada and "Ada" in ada, (who, ada)
     # Somebody who does not live here is not somebody: the house answer stands.
-    assert said_by(c, tok, "whats_true", domain="meals", slot="dinner",
-                   about="Gran").startswith("19:00")
+    gran = said_by(c, tok, "whats_true", domain="meals", slot="dinner",
+                   about="Gran")
+    assert "seven" in gran, gran
     print("PASS a belief about one person stays apart through the tools")
 
 
@@ -859,7 +864,10 @@ def test_a_sentence_can_close_a_situation():
 
     closed = said_by(c, tok, "remember", said="Gran's gone home", speaker="Dad")
     assert "Gran's visit" in closed, closed
-    assert "thermostat.target=23" in closed, closed
+    # What stopped applying is named in words now, not as a field and a value.
+    # The tool result is prose a model reads before it says something out loud,
+    # and "thermostat.target=23" is not a thing an assistant says.
+    assert "23 degrees" in closed and "no longer applies" in closed, closed
     house = said_by(c, tok, "household")
     assert "Gran's visit" not in house, house
     assert "19" in house, house              # Dad's standing rule is back by itself
@@ -874,12 +882,15 @@ def test_a_remembered_belief_can_be_stood_down_by_the_id_it_reported():
     c, app = client()
     tok = app.state.auth.issue_for_testing()
     reply = said_by(c, tok, "remember", said="keep it at 19 in here", speaker="Dad")
-    found = re.search(r"\bid ([0-9a-f]{6,})", reply)
+    # The reference is in brackets at the end rather than woven into the
+    # sentence: the tool result is prose a model reads before speaking, and a
+    # hex string inside the sentence is a hex string it may read out.
+    found = re.search(r"\[([0-9a-f]{6,})\]", reply)
     assert found, reply
     belief_id = found.group(1)
 
-    assert said_by(c, tok, "whats_true", domain="thermostat",
-                   slot="target").startswith("19")
+    assert "19 degrees" in said_by(c, tok, "whats_true", domain="thermostat",
+                                   slot="target")
     stood = said_by(c, tok, "stand_down", belief_id=belief_id,
                     reason="Dad changed his mind")
     assert "19" in stood and "Dad changed his mind" in stood, stood
@@ -919,8 +930,9 @@ def test_the_tools_say_plainly_when_there_is_nothing_to_say():
 
     unnamed = said_by(c, tok, "end_context", context=None)
     assert "which situation" in unnamed.lower(), unnamed
-    assert said_by(c, tok, "whats_true", domain="thermostat",
-                   slot="target").startswith("19"), "an unnamed context ended real beliefs"
+    assert "19 degrees" in said_by(c, tok, "whats_true", domain="thermostat",
+                                   slot="target"), \
+        "an unnamed context ended real beliefs"
     print("PASS the tools say plainly when there is nothing to say")
 
 
@@ -961,7 +973,7 @@ def test_the_seeded_household_has_the_shape_the_demo_needs():
     said_by(c, tok, "remember", said="keep it at 19 in here", speaker="Dad")
     said_by(c, tok, "remember", said="make it 24", speaker="Mum")
     truth = said_by(c, tok, "whats_true", domain="thermostat", slot="target")
-    assert truth.startswith("19"), truth
+    assert "19 degrees" in truth, truth
     print("PASS the seeded household is the one the demo walks through")
 
 
@@ -1340,7 +1352,7 @@ def test_healthz_answers_with_the_state_of_this_instance():
     assert after["beliefs"] == before["beliefs"] + 1, (before, after)
 
     said_by(c, tok, "stand_down",
-            belief_id=re.search(r"\bid ([0-9a-f]{6,})", reply).group(1))
+            belief_id=re.search(r"\[([0-9a-f]{6,})\]", reply).group(1))
     assert c.get("/healthz").json()["beliefs"] == before["beliefs"], "counted a dead belief"
     print("PASS healthz describes the instance it is running in")
 

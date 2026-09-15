@@ -109,6 +109,12 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
     app.state.ledger = ledger
     app.state.mcp = server
     app.state.auth = auth
+    # Reaching a specific household, for tests and local tooling that need one
+    # other than the default. Exposed deliberately rather than by poking at the
+    # closure: the demo needs to move a belief back in time to make a narration
+    # honest, and doing that through a named accessor is clearer than a script
+    # that knows the internals.
+    app.state.home_for = home_for
 
     # --- metadata ----------------------------------------------------------
     @app.get("/.well-known/oauth-protected-resource")

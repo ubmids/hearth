@@ -212,36 +212,57 @@ class HearthMCP:
         ending = self.detect_end(said, self._open_contexts()) if self.detect_end else None
         if ending:
             ended = self.h.end_context(ending)
-            return _text(f"Understood, {ending} is over. {len(ended)} belief(s) "
-                         "stopped applying: "
-                         + "; ".join(f"{b.domain}.{b.slot}={b.value}" for b in ended))
+            gone = " ".join(phrasing.statement(b.domain, b.slot, b.value)
+                            for b in ended)
+            return _text(f"Understood, {ending} is over. {gone} "
+                         f"{'That' if len(ended) == 1 else 'Those'} no longer "
+                         f"{'applies' if len(ended) == 1 else 'apply'}.")
 
         found = (self.extract or (lambda t, n: []))(said, self._names())
         if not found:
             return _text(f"Nothing durable to remember in that, from {speaker}.")
+        # A tool result is prose a model reads before it says something out
+        # loud, so field names and hex ids in it are exactly what leaks into
+        # what a person hears. The sentence is the answer; the id is metadata a
+        # model needs only to stand a belief down later, so it goes at the end
+        # where it reads as a reference rather than part of the reply.
         out = []
         for b in found:
             belief = self.h.assert_belief(
                 holder, b["domain"], b["slot"], b["value"], content=said,
                 scope=b.get("scope"), context=b.get("context"))
-            line = f"{b['domain']}.{b['slot']} = {b['value']} (from {speaker}, id {belief.id})"
+            about = self.h.name_of(belief.scope) if belief.scope else None
+            line = phrasing.statement(b["domain"], b["slot"], b["value"], about)
             if belief.context:
-                line += f", only during {belief.context}"
-            out.append(line)
-        return _text("Remembered: " + "; ".join(out))
+                line += f" That holds only while {belief.context} lasts."
+            out.append(f"{line} [{belief.id}]")
+        return _text(f"Noted, on {speaker}'s word. " + " ".join(out))
 
     def _tool_whats_true(self, domain, slot, about=None):
         r = self.h.resolve(domain, slot, for_member=self._member_id(about),
                            name_domain=phrasing.domain_label)
         if r.winner is None:
-            return _text(f"Nobody has set {domain}.{slot}.")
-        return _text(f"{r.winner.value}. " + r.explain(self.h.name_of))
+            return _text("Nobody has set "
+                         + phrasing.subject(domain, slot, self._member_id(about))
+                         + ".")
+        return _text(phrasing.statement(domain, slot, r.winner.value,
+                                        self.h.name_of(self._member_id(about))
+                                        if about else None)
+                     + " " + r.explain(self.h.name_of, say=phrasing.value_spoken))
 
     def _tool_did(self, what, domain, slot, about=None):
         r = self.h.resolve(domain, slot, for_member=self._member_id(about),
                            name_domain=phrasing.domain_label)
         a = self.ledger.record(what, domain, resolution=r)
-        return _text(f"Logged: {what} (action {a.id})")
+        # Report the value it acted on, not just the verb. "Done, set the
+        # thermostat" tells the household nothing they did not already know,
+        # and the number is the part they would repeat back.
+        if r.winner is None:
+            return _text(f"Done. {what.capitalize()}.")
+        return _text("Done. "
+                     + phrasing.statement(domain, slot, r.winner.value,
+                                          self.h.name_of(self._member_id(about))
+                                          if about else None))
 
     def _tool_why(self, domain=None):
         return _text(self.ledger.why(domain=domain))
@@ -249,8 +270,14 @@ class HearthMCP:
     def _tool_stand_down(self, belief_id, reason="a member stood it down"):
         b = self.h.retire(belief_id, reason=reason)
         if b is None:
-            return _text("No standing belief with that id.")
-        return _text(f"Stood down: {b.domain}.{b.slot} = {b.value} ({reason}).")
+            return _text("No standing belief has that reference.")
+        # The reason travels with the retirement. Someone asking later why the
+        # house changed its mind gets "Dad changed his mind" rather than a
+        # silent disappearance, which is the same promise the action ledger
+        # makes about everything else.
+        return _text(f"Stood down, {reason}. "
+                     f"{phrasing.statement(b.domain, b.slot, b.value)} "
+                     "no longer applies.")
 
     def _tool_end_context(self, context):
         if not context:
@@ -260,8 +287,11 @@ class HearthMCP:
         ended = self.h.end_context(context)
         if not ended:
             return _text(f"Nothing was riding on {context}.")
-        return _text(f"Ended {context}. {len(ended)} belief(s) stopped applying: "
-                     + "; ".join(f"{b.domain}.{b.slot}={b.value}" for b in ended))
+        gone = " ".join(phrasing.statement(b.domain, b.slot, b.value)
+                        for b in ended)
+        return _text(f"Understood, {context} is over. {gone} "
+                     f"{'That' if len(ended) == 1 else 'Those'} no longer "
+                     f"{'applies' if len(ended) == 1 else 'apply'}.")
 
     def _tool_household(self):
         lines = [f"{m.name} ({m.role}"

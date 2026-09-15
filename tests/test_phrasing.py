@@ -194,9 +194,19 @@ def test_the_console_payload_carries_the_household_wording():
                   said="keep it at 19 in here", speaker="Dad")
     assert say["line"] == ("Noted, on Dad's word. The thermostat is set to "
                            "19 degrees."), say["line"]
-    # The exact text the MCP tool returned is still there, because that is what
-    # Alexa+ would hear and the console must not quietly say something else.
-    assert "thermostat.target" in say["reply"], say["reply"]
+    # `reply` is still the exact text the MCP tool returned, and the console
+    # must not quietly say something else. It used to be the developer-shaped
+    # string, which is why this once asserted "thermostat.target". The tool
+    # itself now answers in a sentence, because its result is prose a model
+    # reads before speaking, so the two have converged. What still has to hold
+    # is that the console shows what Alexa+ was actually told.
+    assert say["reply"].startswith("Noted, on Dad's word."), say["reply"]
+    assert "The thermostat is set to 19 degrees." in say["reply"], say["reply"]
+    # The belief reference stays in the tool text: a model needs it to stand
+    # the belief down later. It must not reach the sentence a person reads.
+    import re
+    assert re.search(r"\[[0-9a-f]{6,}\]", say["reply"]), say["reply"]
+    assert not re.search(r"\[[0-9a-f]{6,}\]", say["line"]), say["line"]
 
     console(c, tok, "POST", "/api/say", said="make it 23", speaker="Ada")
     state = console(c, tok, "GET", "/api/state")
