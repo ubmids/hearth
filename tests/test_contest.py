@@ -31,7 +31,10 @@ def test_authority_beats_recency():
     r = h.resolve("thermostat", "target")
     assert r.winner.value == "19", r.winner.value
     assert r.basis == "authority"
-    assert "Dad has the say over thermostat" in r.losers[0][1]
+    # The model renders the domain raw by design, so it stays free of wording.
+    # What a person actually reads is checked in
+    # test_the_sentence_a_person_reads_is_good_english.
+    assert "Dad has the say over" in r.losers[0][1]
     print("PASS authority beats recency:", r.explain(h.name_of))
 
 
@@ -189,6 +192,40 @@ def test_ending_a_context_reports_what_it_ended():
     print("PASS ending a context returns exactly what stopped applying")
 
 
+def test_the_sentence_a_person_reads_is_good_english():
+    """The losing reason is the most prominent sentence in the product, and it
+    appears three times on the console at once.
+
+    The model renders the domain raw so it stays free of wording, which reads as
+    "over thermostat". Every surface a person meets passes a renderer, and this
+    checks the result is English rather than a field name with a space in it.
+    A dotted domain has to work too: "over bedroom.ada" is not a sentence.
+    """
+    from hearth import phrasing
+
+    h = Household("test")
+    dad = h.add_member("Dad", role="adult", grants=["thermostat"])
+    ada = h.add_member("Ada", role="child", grants=["bedroom.ada"])
+    now = time.time()
+
+    h.assert_belief(dad.id, "thermostat", "target", "19", stated_at=now - WEEK)
+    h.assert_belief(ada.id, "thermostat", "target", "23", stated_at=now)
+    r = h.resolve("thermostat", "target", name_domain=phrasing.domain_label)
+    assert r.losers[0][1] == "Dad has the say over the thermostat", r.losers[0][1]
+
+    h.assert_belief(ada.id, "bedroom.ada", "lights", "on", stated_at=now - 60)
+    h.assert_belief(dad.id, "bedroom.ada", "lights", "off", stated_at=now)
+    r2 = h.resolve("bedroom.ada", "lights", name_domain=phrasing.domain_label)
+    assert r2.losers[0][1] == "Ada has the say over Ada's bedroom", r2.losers[0][1]
+
+    # And a domain nobody has phrasing for must still come out as a sentence.
+    h.assert_belief(dad.id, "greenhouse", "vent", "open", stated_at=now - 60)
+    h.assert_belief(ada.id, "greenhouse", "vent", "shut", stated_at=now)
+    r3 = h.resolve("greenhouse", "vent", name_domain=phrasing.domain_label)
+    assert "over the greenhouse" in r3.losers[0][1], r3.losers[0][1]
+    print("PASS the sentence a person reads is English:", r.losers[0][1])
+
+
 def test_why_then_repair():
     """The 20-second demo, end to end: wrong action, why, repair, right action."""
     h, dad, mum, kid = house()
@@ -246,7 +283,7 @@ def test_the_ledger_survives_a_restart():
         # beat it are the part that makes the answer worth anything, and they
         # live inside the resolution rather than on the action.
         assert led2.why() == said_then, (led2.why(), said_then)
-        assert "Dad has the say over thermostat" in led2.why()
+        assert "Dad has the say over" in led2.why()
         assert led2.why(action_id=acted.id) == said_then
 
         # And it can still be written to. The first `did` after a restart used
@@ -466,7 +503,7 @@ def test_the_sentence_the_assistant_says_out_loud():
     # the sentence people actually hear did not.
     assert h.resolve("thermostat", "target").explain(h.name_of) == (
         "Dad set it 3 weeks ago, during the cold snap, to 19. "
-        "Kid said 23, but Dad has the say over thermostat.")
+        "Kid said 23, but Dad has the say over thermostat.")   # model default
 
     # An assertion with nothing standing against it says only what happened.
     quiet = Household("test")

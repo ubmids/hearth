@@ -14,6 +14,8 @@ because the model calling them is transcribing a person: `remember`,
 import time
 import uuid
 
+from . import phrasing
+
 PROTOCOL_VERSION = "2025-11-25"
 SERVER_INFO = {"name": "hearth", "version": "0.1.0",
                "title": "Hearth household memory"}
@@ -229,13 +231,15 @@ class HearthMCP:
         return _text("Remembered: " + "; ".join(out))
 
     def _tool_whats_true(self, domain, slot, about=None):
-        r = self.h.resolve(domain, slot, for_member=self._member_id(about))
+        r = self.h.resolve(domain, slot, for_member=self._member_id(about),
+                           name_domain=phrasing.domain_label)
         if r.winner is None:
             return _text(f"Nobody has set {domain}.{slot}.")
         return _text(f"{r.winner.value}. " + r.explain(self.h.name_of))
 
     def _tool_did(self, what, domain, slot, about=None):
-        r = self.h.resolve(domain, slot, for_member=self._member_id(about))
+        r = self.h.resolve(domain, slot, for_member=self._member_id(about),
+                           name_domain=phrasing.domain_label)
         a = self.ledger.record(what, domain, resolution=r)
         return _text(f"Logged: {what} (action {a.id})")
 

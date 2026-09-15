@@ -268,7 +268,8 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
             audiences = [None] + sorted({x.scope for x in live
                                          if (x.domain, x.slot) == key and x.scope})
             for who in audiences:
-                r = household.resolve(b.domain, b.slot, for_member=who)
+                r = household.resolve(b.domain, b.slot, for_member=who,
+                                      name_domain=phrasing.domain_label)
                 if r.winner is None:
                     continue
                 about = household.name_of(who) if who else None
@@ -390,7 +391,8 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         # sentence. A stranger resolves household-wide, so saying "Gran's
         # thermostat" would describe an answer nobody was given.
         named = h.name_of(mid) if mid else None
-        r = h.resolve(domain, slot, for_member=mid)
+        r = h.resolve(domain, slot, for_member=mid,
+                      name_domain=phrasing.domain_label)
         if r.winner is None:
             return {"reply": f"Nobody has set {phrasing.subject(domain, slot, named)}.",
                     "state": _state(h, led)}

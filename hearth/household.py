@@ -96,7 +96,8 @@ class Household:
         return ended
 
     # --- the contest -------------------------------------------------------
-    def resolve(self, domain, slot, for_member=None, now=None) -> Resolution:
+    def resolve(self, domain, slot, for_member=None, now=None,
+                name_domain=None) -> Resolution:
         """Decide what is true right now, and be able to say why.
 
         Pure computation, no model call: Alexa+ allows a 500ms round trip for a
@@ -108,6 +109,12 @@ class Household:
           2. authority  whoever owns the domain outranks whoever does not
           3. recency    among equals, the most recent assertion stands
         """
+        # `name_domain` renders the domain for the losing reasons, the same hook
+        # and the same reason as `say` in Resolution.explain: this module must
+        # not know how anything is worded, and a surface a person reads must not
+        # say "over thermostat" when the English is "over the thermostat". The
+        # default keeps the raw domain, so the model layer stays wording-free.
+        name_domain = name_domain or (lambda d: d)
         now = now or time.time()
         live = [b for b in self.beliefs
                 if b.domain == domain and b.slot == slot and b.is_live(now)
@@ -127,7 +134,8 @@ class Household:
                 reason = f"that one is about the whole house, this is about {self.name_of(for_member)}"
                 basis = "scope"
             elif self._authority(b) < self._authority(winner):
-                reason = f"{self.name_of(winner.holder)} has the say over {domain}"
+                reason = (f"{self.name_of(winner.holder)} has the say over "
+                          f"{name_domain(domain)}")
                 basis = "authority"
             else:
                 reason = "it was set earlier"
