@@ -236,7 +236,10 @@ class HearthMCP:
             if belief.context:
                 line += f" That holds only while {belief.context} lasts."
             out.append(f"{line} [{belief.id}]")
-        return _text(f"Noted, on {speaker}'s word. " + " ".join(out))
+        # Possessed through phrasing, so the text Alexa+ is handed and the line
+        # the console shows cannot disagree about somebody's name.
+        return _text(f"Noted, on {phrasing.possessive(speaker)} word. "
+                     + " ".join(out))
 
     def _tool_whats_true(self, domain, slot, about=None):
         r = self.h.resolve(domain, slot, for_member=self._member_id(about),

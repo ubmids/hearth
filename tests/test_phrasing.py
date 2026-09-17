@@ -60,10 +60,119 @@ def test_a_time_is_read_off_a_clock_rather_than_a_field():
     assert p.spoken("meals", "dinner", "07:23") == "7:23"
     assert p.spoken("meals", "dinner", "00:30") == "half past twelve"
     assert p.spoken("meals", "dinner", "12:00") == "twelve"
+    # Quarter to wraps round the top of the clock, where the arithmetic that
+    # names the next hour is the only place it can be wrong.
+    assert p.spoken("meals", "dinner", "12:45") == "quarter to one"
+    assert p.spoken("meals", "dinner", "23:45") == "quarter to twelve"
+    # A minute under ten keeps its leading zero. 7:23 is the same string either
+    # way, so the padding was the one part of this nothing had ever read.
+    assert p.spoken("meals", "dinner", "07:05") == "7:05"
+
     # And the short form keeps the half of the day, which words drop.
     assert p.reading("meals", "dinner", "17:00") == "5:00pm"
     assert p.reading("meals", "dinner", "07:00") == "7:00am"
+    # Noon and midnight are the two the half-of-the-day test is decided by, and
+    # both were a full twelve hours away from anything asserted here. Midday
+    # shown as 12:00am is a dinner moved to the middle of the night.
+    assert p.reading("meals", "dinner", "12:00") == "12:00pm"
+    assert p.reading("meals", "dinner", "00:00") == "12:00am"
+    assert p.reading("meals", "dinner", "11:59") == "11:59am"
+    assert p.reading("shopping", "coffee", "Sumatra") == "Sumatra"
     print("PASS a time is read off a clock")
+
+
+def test_every_hour_of_the_clock_has_a_word():
+    """Four of the twelve hours were ever spoken out loud, and the words come
+    out of a hand-written table that nothing read the rest of.
+
+    A missing or wrong entry is not an error anywhere. It is the house saying
+    "dinner is at" and then nothing, or naming the wrong hour with complete
+    confidence, for one hour of the day and no other, which is the sort of
+    thing that gets found by a household rather than by a test.
+    """
+    words = ["twelve", "one", "two", "three", "four", "five", "six",
+             "seven", "eight", "nine", "ten", "eleven"]
+    for hour, word in enumerate(words):
+        assert p.spoken("meals", "dinner", f"{hour:02d}:00") == word, hour
+        assert p.spoken("meals", "dinner", f"{hour + 12:02d}:00") == word, hour
+        assert p.spoken("meals", "dinner", f"{hour:02d}:30") == f"half past {word}"
+    print(f"PASS all {len(words)} hours of the clock have a word")
+
+
+def test_a_value_that_only_looks_like_a_time_is_left_as_it_was_written():
+    """Both ends of the clock are checked and neither end was tested, so the
+    range could have been open on either side.
+
+    A household types 25:00 or 7:75 sooner or later, and the failure is silent:
+    25:00 read as a clock is spoken as one o'clock, which is a plausible answer
+    to the wrong question. Left alone it is obviously a typo, which is the
+    behaviour that can be argued with.
+    """
+    for odd in ("25:00", "24:00", "07:75", "12:60", "99:99"):
+        assert p.spoken("meals", "dinner", odd) == odd, odd
+        assert p.reading("meals", "dinner", odd) == odd, odd
+    # And the last value on each side that is a real time still is one.
+    assert p.spoken("meals", "dinner", "23:59") == "11:59"
+    assert p.reading("meals", "dinner", "23:59") == "11:59pm"
+    assert p.reading("meals", "dinner", "00:01") == "12:01am"
+    print("PASS a value that only looks like a time is left as it was written")
+
+
+def test_a_value_that_is_not_a_temperature_is_not_read_as_one():
+    """The unit belongs to the setting, so the thermostat says degrees whatever
+    it is handed, and the guard that stops it is exercised by nothing.
+
+    "The thermostat is set to off degrees" is the sentence a judge hears the
+    first time anyone turns the heating off. The other direction costs more:
+    a household below freezing sets it to -3, and a unit sniff that reads the
+    minus sign as "not a number" drops the degrees from the one reading where
+    the number alone is ambiguous.
+    """
+    assert p.spoken("thermostat", "target", "off") == "off"
+    assert p.statement("thermostat", "target", "off") == "The thermostat is set to off."
+    assert p.reading("thermostat", "target", "off") == "off"
+    assert p.spoken("thermostat", "target", "-3") == "-3 degrees"
+    assert p.reading("thermostat", "target", "-3") == "-3\u00b0"
+    # A number is still a number in a domain nobody described, and it is still
+    # not a temperature: the sniff stops at times on purpose, so that a shoe
+    # size does not get announced in degrees.
+    assert p.spoken("shoes", "size", "9") == "9"
+    print("PASS a value that is not a temperature is not read as one")
+
+
+SPOKEN_BY_THE_HOUSE = {
+    ("thermostat", "target", "19", None): "The thermostat is set to 19 degrees.",
+    ("thermostat", "night", "17", None):
+        "The thermostat overnight is set to 17 degrees.",
+    ("meals", "dinner", "19:00", None): "Dinner is at seven.",
+    ("meals", "lunch", "13:00", None): "Lunch is at one.",
+    ("meals", "breakfast", "07:30", None): "Breakfast is at half past seven.",
+    ("lights", "bedtime", "21:00", None): "Lights out is at nine.",
+    ("lights", "brightness", "dim", None): "The lights are set to dim.",
+    ("shopping", "coffee", "Sumatra", None): "The coffee is Sumatra.",
+    ("shopping", "milk", "oat", None): "The milk is oat.",
+    ("media", "volume", "4", None): "The volume is set to 4.",
+    ("bedroom", "lights", "off", "Ada"): "Ada's bedroom lights are off.",
+    ("bedroom", "bedtime", "20:00", "Ada"): "Ada's bedtime is at eight.",
+}
+
+
+def test_every_setting_the_house_knows_is_said_in_the_words_written_for_it():
+    """Two of the twelve rows were ever spoken. The rest are a table nothing
+    reads, which is the same as a table nobody wrote.
+
+    A row that loses its subject, its verb or the key it is filed under does
+    not fail. It falls through to the wording built for a domain this file has
+    never met, and the house starts saying "the meals lunch is at one" in front
+    of whoever is listening. The sentences are written out here rather than
+    read back out of SETTINGS, because a test that asks the table what the
+    table says agrees with it whatever it has become.
+    """
+    assert set(p.SETTINGS) == {(d, s) for d, s, _, _ in SPOKEN_BY_THE_HOUSE}, \
+        "a setting was added or removed without a sentence to go with it"
+    for (domain, slot, value, about), said in SPOKEN_BY_THE_HOUSE.items():
+        assert p.statement(domain, slot, value, about) == said, (domain, slot)
+    print(f"PASS all {len(SPOKEN_BY_THE_HOUSE)} settings are said in their own words")
 
 
 def test_a_domain_nobody_wrote_phrasing_for_still_speaks():
@@ -81,6 +190,19 @@ def test_a_domain_nobody_wrote_phrasing_for_still_speaks():
     assert p.statement("sauna", "booking", "18:00") == "The sauna booking is at six."
     # And a bare number in an unknown domain is not assumed to be degrees.
     assert p.spoken("shoes", "size", "9") == "9"
+    # A repeated word is dropped rather than stuttered, which is the one rule
+    # the generic wording has and the one thing nothing asked it for.
+    assert p.subject("lights", "lights") == "the lights"
+    # A room nobody is named for still has an article. The {whose} slot is
+    # filled from the member, then the tail of the domain, then a plain "the",
+    # and the last of those is what a house-wide bedroom setting gets.
+    assert p.subject("bedroom", "lights") == "the bedroom lights"
+    assert p.statement("bedroom", "bedtime", "20:00") == "The bedtime is at eight."
+    assert p.subject("garden.hose", "hose") == "the hose garden"
+    # An underscore is a word break, not a character. "The games_room lamp" is
+    # the inside of a config file reaching a sentence somebody reads.
+    assert p.statement("games_room", "lamp", "on") == \
+        "The games room lamp is set to on."
     for domain, slot, value in [("", "", ""), ("a.b.c.d", "e", "1"),
                                 ("UPPER", "Slot", "Value"), ("x_y", "p_q", "8")]:
         assert p.statement(domain, slot, value).endswith(".")
@@ -107,15 +229,31 @@ def test_the_contest_is_settled_in_the_terms_a_house_argues_in():
     auth = p.verdict("authority", winner="Dad", about=None,
                      domain="thermostat", slot="target")
     assert auth["line"] == "Dad has the final say over the thermostat."
-    assert "Dad" in auth["chip"] and "authority" not in auth["chip"]
+    # The chip is the half of this a person reads first and it was only ever
+    # checked for a name and the absence of a rule name, which two words of
+    # anything would satisfy.
+    assert auth["chip"] == "Dad has the say", auth["chip"]
 
     recent = p.verdict("recency", winner="Mum", about=None,
                        domain="shopping", slot="coffee")
-    assert "most recent" in recent["line"] and "Mum" in recent["line"]
+    assert recent["chip"] == "most recent word", recent["chip"]
+    assert recent["line"] == (
+        "Nobody here outranks anyone else on this, so the most recent word "
+        "stands, and it was Mum's."), recent["line"]
 
     mine = p.verdict("scope", winner="Mum", about="Ada",
                      domain="meals", slot="dinner")
-    assert "about Ada" in mine["line"] and mine["chip"] == "about Ada"
+    assert mine["chip"] == "about Ada"
+    assert mine["line"] == ("This one is about Ada, so it comes ahead of the "
+                            "rule for the whole house."), mine["line"]
+
+    # A scoped belief whose subject nobody named still has to read as a
+    # sentence. The console draws this row from whatever the caller asked
+    # about, and it asks about nobody more often than it asks about Ada.
+    anon = p.verdict("scope", winner="Mum", about=None,
+                     domain="meals", slot="dinner")
+    assert anon["chip"] == "about one person"
+    assert anon["line"].startswith("This one is about one person, so it comes")
 
     # A sole belief is not a contest, and an unknown rule name is not a sentence.
     assert p.verdict("sole live belief", winner="Dad", about=None,
@@ -129,9 +267,64 @@ def test_what_a_member_has_the_say_over_is_said_in_words():
     assert "everything under it" in p.authority_line(["bedroom.*"])
     assert p.authority_line(["thermostat", "shopping"]) == \
         "has the say over the thermostat and the shopping"
+    # Three is the first length where the list needs a separator as well as an
+    # "and", so two grants proved nothing about the join.
+    assert p.authority_line(["thermostat", "shopping", "media"]) == \
+        "has the say over the thermostat, the shopping and what plays"
     # Having no grant is a real position in the house, not a missing field.
     assert "recency" in p.authority_line([])
+
+    # And each label the house was given words for, said whole. A wildcard
+    # keeps its own domain in front of the phrase that widens it, and an
+    # underscore in a domain nobody described is a word break rather than a
+    # character somebody has to read out.
+    assert p.domain_label("bedroom.*") == "the bedroom and everything under it"
+    assert p.domain_label("games_room") == "the games room"
+    for domain, label in {"thermostat": "the thermostat", "shopping": "the shopping",
+                          "meals": "mealtimes", "lights": "the lights",
+                          "media": "what plays",
+                          "security": "the locks and alarm"}.items():
+        assert p.domain_label(domain) == label, domain
+        assert p.domain_label(domain + ".*") == label + " and everything under it"
+    assert set(p.DOMAIN_LABELS) == {"thermostat", "shopping", "meals", "lights",
+                                    "media", "security"}
     print("PASS authority is said in words:", p.authority_line(["bedroom.*"]))
+
+
+def test_what_the_house_says_back_is_a_sentence_in_every_shape():
+    """Only one shape of each reply was ever produced, and the others are the
+    ones a household reaches within a day.
+
+    Nothing had ever confirmed a sentence with no speaker attached, which is
+    what the MCP tools produce when Alexa+ does not say who spoke. Nothing had
+    ever ended a situation that took more than one belief with it, which is the
+    normal case: a visit sets the heating and the mealtimes together. A reply
+    that loses its count or its ending is not an error, it is the house
+    answering in a fragment on the one occasion somebody is listening closely.
+    """
+    assert p.confirm(["The coffee is Sumatra."]) == "Noted. The coffee is Sumatra."
+    assert p.confirm(["The coffee is Sumatra."], speaker="Dad") == \
+        "Noted, on Dad's word. The coffee is Sumatra."
+    # A name ending in s is possessed the way the rest of the product does it.
+    assert p.confirm(["The coffee is Sumatra."], speaker="Gus") == \
+        "Noted, on Gus' word. The coffee is Sumatra."
+    assert p.confirm(["Dinner is at seven.", "The coffee is Sumatra."],
+                     speaker="Mum") == \
+        "Noted, on Mum's word. Dinner is at seven. The coffee is Sumatra."
+    assert p.confirm(["Dinner is at seven."], speaker="Mum",
+                     context="Gran's visit") == \
+        ("Noted, on Mum's word. Dinner is at seven. That holds only while "
+         "Gran's visit lasts.")
+
+    assert p.closed("the cold snap", []) == "Understood, the cold snap is over."
+    assert p.closed("the cold snap", ["The thermostat is set to 23 degrees."]) == \
+        ("Understood, the cold snap is over. One thing stopped applying. "
+         "The thermostat is set to 23 degrees.")
+    assert p.closed("the cold snap",
+                    ["Dinner is at seven.", "Lights out is at nine."]) == \
+        ("Understood, the cold snap is over. 2 things stopped applying. "
+         "Dinner is at seven. Lights out is at nine.")
+    print("PASS what the house says back is a sentence in every shape")
 
 
 def test_a_belief_shows_the_sentence_somebody_actually_said():
@@ -154,6 +347,22 @@ def test_where_a_belief_stands_distinguishes_ended_from_taken_back():
     assert p.standing(False, "superseded", "Dad changed his mind") == \
         "Dad changed his mind"
     assert p.standing(False, "superseded") == "stood down"
+    # An ending with no reason recorded still has to be English. `status` is a
+    # field name, and "expired" on the page is the store talking about itself.
+    assert p.standing(False, "expired") == "no longer applies"
+    assert p.standing(False, "something new") == "something new"
+
+    # And the prefix this reads is written a module away, by end_context, so
+    # the two halves were each correct on their own and nothing joined them up.
+    from hearth import Household
+
+    h = Household("test")
+    dad = h.add_member("Dad")
+    warm = h.assert_belief(dad.id, "thermostat", "target", "23",
+                           context="Gran's visit")
+    h.end_context("Gran's visit")
+    assert p.standing(warm.is_live(), warm.status, warm.ended_reason) == \
+        "Gran's visit ended", warm.ended_reason
     print("PASS where a belief stands says how it got there")
 
 
@@ -223,6 +432,14 @@ def test_the_console_payload_carries_the_household_wording():
                for m in state["members"]), state["members"]
     assert state["beliefs"][0]["said"] == "“keep it at 19 in here”"
     assert state["beliefs"][0]["standing"] == "standing"
+
+    # A name ending in s is possessed once, and the same way in both places.
+    # The tool text and the console line are written out separately on purpose,
+    # because only one of them may carry a belief id, and that is exactly the
+    # kind of pair that drifts on a name no test ever used.
+    gus = console(c, tok, "POST", "/api/say", said="we eat at 18:00", speaker="Gus")
+    assert gus["line"].startswith("Noted, on Gus' word."), gus["line"]
+    assert gus["reply"].startswith("Noted, on Gus' word."), gus["reply"]
     print("PASS the console payload carries the household wording")
 
 

@@ -226,7 +226,7 @@ def verdict(basis: str, *, winner: str, about: str | None,
     if basis == "recency":
         return {"chip": "most recent word",
                 "line": ("Nobody here outranks anyone else on this, so the most "
-                         f"recent word stands, and it was {winner}'s.")}
+                         f"recent word stands, and it was {possessive(winner)}.")}
     if basis == "scope":
         who = about or "one person"
         return {"chip": f"about {who}",
@@ -281,7 +281,11 @@ def confirm(statements, *, speaker: str = "", context: str | None = None) -> str
     confirmation that mangles somebody's name is worse than a plain one.
     """
     body = " ".join(statements)
-    line = f"Noted, on {speaker}'s word. {body}" if speaker else f"Noted. {body}"
+    # Through `possessive` rather than a bare apostrophe s, because this is the
+    # one line in the product that says a member's name back to them and Gus is
+    # not called Gus's by anybody who lives with him.
+    line = (f"Noted, on {possessive(speaker)} word. {body}" if speaker
+            else f"Noted. {body}")
     if context:
         line += f" That holds only while {context} lasts."
     return line

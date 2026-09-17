@@ -6,7 +6,7 @@ import os, shutil, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hearth import Household, Ledger
-from hearth.models import _ago
+from hearth.models import Member, _ago
 from hearth.store import Store
 
 WEEK = 604800
@@ -109,6 +109,31 @@ def test_the_reason_given_is_the_one_that_settled_it():
     # The runner-up is Mum, and Dad beat her on authority.
     assert r.losers[0][0].value == "21", [l[0].value for l in r.losers]
     assert r.basis == "authority"
+
+    # That much still passes with `losers[-1]`, because both of these were
+    # beaten by the same rule, so the two ends of the list agree and the test
+    # named after the distinction never made it. The runner-up and the
+    # last-placed belief have to be beaten by *different* rules before the
+    # index means anything, which is this: Dad's word about Ada beats Mum's
+    # word about Ada on authority, and beats the owner's house-wide rule on
+    # scope. The console prints one of those two sentences under the answer.
+    hers = Household("test")
+    dad = hers.add_member("Dad", role="adult", grants=["meals"])
+    mum = hers.add_member("Mum", role="adult")
+    owner = hers.add_member("Owner", role="owner")
+    ada = hers.add_member("Ada", role="child")
+
+    hers.assert_belief(dad.id, "meals", "dinner", "17:00", scope=ada.id,
+                       stated_at=now - WEEK)
+    hers.assert_belief(mum.id, "meals", "dinner", "18:00", scope=ada.id,
+                       stated_at=now)
+    hers.assert_belief(owner.id, "meals", "dinner", "19:00", stated_at=now)
+
+    r2 = hers.resolve("meals", "dinner", for_member=ada.id)
+    assert r2.winner.value == "17:00", r2.winner.value
+    assert [b.value for b, _ in r2.losers] == ["18:00", "19:00"], \
+        [b.value for b, _ in r2.losers]
+    assert r2.basis == "authority", r2.basis
     print("PASS the basis explains how the runner-up was beaten:",
           r.explain(h.name_of))
 
@@ -150,6 +175,14 @@ def test_a_belief_from_someone_who_does_not_live_here():
     r = h.resolve("shopping", "coffee")
     assert r.winner.value == "Lavazza", r.winner.value
     assert h._authority(ghost) == 0
+
+    # And the sentence still has somebody in it. An empty fallback would lose
+    # the subject of the clause a person actually hears, leaving "said Sumatra,
+    # but Kid has the say", which reads like a truncated recording.
+    assert h.name_of("not-a-member") == "someone"
+    assert r.explain(h.name_of).endswith(
+        "someone said Sumatra, but Kid has the say over shopping."), \
+        r.explain(h.name_of)
     print("PASS a belief from a stranger ranks below every member")
 
 
@@ -236,7 +269,12 @@ def test_why_then_repair():
     led.record("set the thermostat to 19", "thermostat", resolution=r)
 
     why = led.why()
-    assert "Dad" in why and "19" in why, why
+    # Pinned whole, for the same reason `explain` is: this is the sentence the
+    # product is named after, and asserting two words of it leaves the rest of
+    # the line free to lose the action, the reason, or the join between them
+    # and still read as a pass.
+    assert why == ("I set the thermostat to 19 because Dad set it just now, "
+                   "during the cold snap, to 19 degrees."), why
     print("  asked why ->", why)
 
     h.retire(stale.id, reason="Dad stood it down")
@@ -285,11 +323,26 @@ def test_the_ledger_survives_a_restart():
         assert led2.why() == said_then, (led2.why(), said_then)
         assert "Dad has the say over" in led2.why()
         assert led2.why(action_id=acted.id) == said_then
+        # The rule that decided it travels with the reason. `basis` is what the
+        # console turns into "Dad has the final say over the thermostat", so
+        # losing it in the round trip empties that line on every past action
+        # the moment the service is restarted.
+        assert led2.actions[0].resolution.basis == "authority", \
+            led2.actions[0].resolution.basis
 
         # And it can still be written to. The first `did` after a restart used
         # to fail while saving, which lost the new action as well as the old.
         led2.record("set the thermostat to 22", "thermostat")
         assert len(Ledger(h2, store=Store(os.path.join(tmp, "house"))).actions) == 2
+
+        # A refusal has to survive as a refusal. It is read back by name, and a
+        # name that is not read falls to the default, so the ledger comes back
+        # claiming the assistant did the thing it had declined to do. That is
+        # the audit trail lying rather than merely forgetting.
+        led2.record("turned the heating up", "thermostat", outcome="refused")
+        led3 = Ledger(h2, store=Store(os.path.join(tmp, "house")))
+        assert [a.outcome for a in led3.actions] == ["done", "done", "refused"], \
+            [a.outcome for a in led3.actions]
         print("PASS the ledger and its reasons survive a restart")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -373,6 +426,38 @@ def test_role_ranks_decide_when_nobody_owns_the_domain():
     print("PASS role ranks order the house when nobody owns the domain")
 
 
+def test_a_member_recorded_without_a_role_is_one_of_the_adults():
+    """Every test here names a role, so the default was never once exercised,
+    and a default nothing runs is a value nobody has checked.
+
+    A member arrives from account linking with whatever the linking gave us,
+    which is often a name and nothing else. If the unstated role ranked as a
+    guest, the household's own grown-ups would quietly sit below its children
+    on every domain nobody owns, the answers would still be confident, and the
+    only symptom would be a house that keeps taking the wrong person's word.
+    """
+    h = Household("test")
+    grown = h.add_member("Gwen")                      # no role stated
+    child = h.add_member("Kid", role="child")
+    assert grown.role == "adult"
+    assert grown.authority_over("meals") > child.authority_over("meals")
+
+    now = time.time()
+    h.assert_belief(child.id, "meals", "dinner", "20:00", stated_at=now)
+    h.assert_belief(grown.id, "meals", "dinner", "18:00", stated_at=now - 3600)
+    r = h.resolve("meals", "dinner")
+    assert r.winner.value == "18:00", "a child outranked an adult"
+    assert r.basis == "authority"
+
+    # And the same on the way back off disk, where the role has its own
+    # default: a member saved before the field existed must not be demoted by
+    # being read back.
+    assert Member(name="Gwen").role == "adult"
+    assert Member.from_dict({"id": "m-gwen", "name": "Gwen"}).authority_over(
+        "meals") == grown.authority_over("meals")
+    print("PASS a member with no role stated is an adult, here and after a restart")
+
+
 def test_a_wildcard_grant_covers_the_domain_it_names():
     """`bedroom.*` has to cover `bedroom` and everything under it, and nothing
     else. Only one wildcard case was ever resolved, so the prefix could have
@@ -418,6 +503,15 @@ def test_a_belief_with_an_expiry_stops_winning_when_it_passes():
     later = now + 3601
     assert not until.is_live(later)
     assert h.resolve("thermostat", "target", now=later).winner.value == "19"
+
+    # And at the instant itself, which is the only moment the comparison can be
+    # wrong in. `now >= expires_at` asked a second late is still a green suite
+    # and a rule that outlives the hour it was given, so the deadline is
+    # checked from both sides of itself.
+    assert until.is_live(now + 3599)
+    assert not until.is_live(now + 3600), "it was still live at the instant it expired"
+    assert h.resolve("thermostat", "target", now=now + 3600).winner.value == "19"
+
     # It is spent, not deleted, exactly like a context that ended.
     assert until in h.beliefs and until.status == "active"
     print("PASS a belief with an expiry stops winning once it passes")

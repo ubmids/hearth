@@ -48,7 +48,7 @@ rule extractor when no model is configured, and that is what CI runs.
 
 ## Status
 
-Core, transport, auth and wording are done and tested. 120 tests green.
+Core, transport, auth and wording are done and tested. 127 tests green.
 
 - Beliefs with provenance, scope, context and expiry
 - Contest resolution by scope, then authority, then recency, each with a spoken reason

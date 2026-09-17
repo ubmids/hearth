@@ -333,17 +333,52 @@ def test_the_models_answer_is_the_one_that_is_used():
     print("PASS the model's answer is the one that is used, not the rules'")
 
 
-def test_a_base_url_with_no_key_is_never_called():
+def test_a_half_configured_model_is_never_called_at_all():
     """Half-configured is the state a deployment is actually found in: the URL
     set, the key forgotten. Calling out anyway sends the household's sentences
     to a third party with an empty credential, and gets a 401 in return, so it
     leaks and does not even work.
+
+    This test used to watch the stub and pass for a reason that had nothing to
+    do with the guard it is named after. httpx refuses to put `Bearer ` on the
+    wire at all, that refusal is swallowed by the fall back that exists for
+    network failures, and the stub therefore saw no request whichever way the
+    condition was written. `base and key` could be loosened to `base or key`
+    and every test in this file stayed green. The attempt is now watched one
+    layer further down, where nothing else can quietly prevent it.
     """
-    configure(key="")
-    out = ex.llm_extract("keep it at 19", NAMES)
-    assert STATE["last_request"] is None, "it called the API with no key"
-    assert out and out[0]["value"] == "19", out
-    print("PASS a base URL with no key is never called")
+    import httpx
+
+    tried = []
+    real_post = httpx.post
+
+    def watched(url, **kw):
+        tried.append(url)
+        return real_post(url, **kw)
+
+    httpx.post = watched
+    try:
+        configure(key="")
+        out = ex.llm_extract("keep it at 19", NAMES)
+        assert tried == [], f"it called the model with no key: {tried}"
+        assert out and out[0]["value"] == "19", out
+
+        # The mirror of it, a key with nowhere to send it, which is what a
+        # deployment looks like the moment the endpoint is renamed.
+        configure(base="")
+        out = ex.llm_extract("keep it at 19", NAMES)
+        assert tried == [], f"it called the model with no endpoint: {tried}"
+        assert out and out[0]["value"] == "19", out
+
+        # And fully configured it does call, so the two assertions above are
+        # about the guard rather than about a path that never runs at all.
+        configure()
+        STATE.update(status=200, reply={"beliefs": []})
+        ex.llm_extract("keep it at 19", NAMES)
+        assert len(tried) == 1, tried
+    finally:
+        httpx.post = real_post
+    print("PASS a half configured model is never called at all")
 
 
 def test_the_system_prompt_asks_for_the_shape_the_parser_expects():
