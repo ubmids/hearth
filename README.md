@@ -97,7 +97,8 @@ entrants. `/alexa` is a real MCP client standing in for it: it authorises with
 PKCE, opens an MCP session per device, lists tools, reads Hearth's MCP App and
 hosts it the way an Echo Show would, and calls tools over Streamable HTTP. What
 it cannot be is Alexa's language model: a small planner chooses which tool to
-call (a configured model, or built-in rules, named on screen), and every word
+call (a configured model taught by Hearth's Agent Skill, or built-in rules;
+the header says which), and every word
 the assistant says is the text Hearth returned.
 
 Voice: Amazon Polly neural if AWS keys are set, otherwise

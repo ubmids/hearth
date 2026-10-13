@@ -130,8 +130,8 @@ opens an MCP session per device (kitchen Echo Show, Tom's Echo Dot, Ada's
 Alexa app), lists tools, reads Hearth's MCP App and hosts it the way an Echo
 Show would, calls tools over Streamable HTTP, and plays the host's part in
 checkout. The MCP traffic is shown live beside the conversation. A small
-planner stands in for Alexa's language model (a configured model, or built-in
-rules, named on screen). **Every word Alexa says is the text Hearth
+planner stands in for Alexa's language model (a configured model, taught by
+Hearth's Agent Skill, or built-in rules; the header says which). **Every word Alexa says is the text Hearth
 returned.**
 
 Also simulated: the ride service and the pharmacy are sandbox providers. Nothing
