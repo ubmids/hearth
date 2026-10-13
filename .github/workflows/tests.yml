@@ -1,0 +1,30 @@
+# Every offline suite, on every push: Alexa+ conformance, the care household
+# and its record, contest resolution, phrasing, extraction, the listing, the
+# simulator, and interop with the official MCP Python SDK client.
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  suites:
+    runs-on: ubuntu-latest
+    env:
+      HEARTH_TZ: America/New_York
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r requirements.txt "mcp>=2.3"
+      - name: Run the suites
+        run: |
+          set -e
+          for t in tests/test_*.py; do
+            [ "$t" = tests/test_live.py ] && continue
+            echo "::group::$t"
+            python3 "$t"
+            echo "::endgroup::"
+          done

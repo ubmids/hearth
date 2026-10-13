@@ -17,6 +17,9 @@ on:
 
 jobs:
   verify:
+    # Only while a deployment is live (repository variable HEARTH_LIVE_URL).
+    # The offline suites run on every push in tests.yml.
+    if: vars.HEARTH_LIVE_URL != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,4 +34,4 @@ jobs:
           pip install -q fastapi httpx
           python3 tests/test_conformance.py
       - name: Against the deployment
-        run: python3 tests/test_live.py https://hearth-sh3u.onrender.com
+        run: python3 tests/test_live.py ${{ vars.HEARTH_LIVE_URL }}

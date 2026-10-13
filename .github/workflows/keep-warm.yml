@@ -14,13 +14,16 @@ on:
 
 jobs:
   ping:
+    # Only while a deployment is live: set the repository variable
+    # HEARTH_LIVE_URL (e.g. https://hearth-sh3u.onrender.com) to turn it on.
+    if: vars.HEARTH_LIVE_URL != ''
     runs-on: ubuntu-latest
     steps:
       - name: Wake the service and report the round trip
         run: |
           for i in 1 2 3; do
             ms=$( { /usr/bin/time -f "%e" curl -sf -o /dev/null \
-                    https://hearth-sh3u.onrender.com/healthz ; } 2>&1 ) && {
+                    ${{ vars.HEARTH_LIVE_URL }}/healthz ; } 2>&1 ) && {
               echo "healthz ok in ${ms}s"; exit 0; }
             sleep 5
           done
