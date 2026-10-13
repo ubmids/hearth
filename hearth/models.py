@@ -24,7 +24,9 @@ def _id() -> str:
 # Role ranks are the fallback when nobody holds an explicit grant over a domain.
 # Deliberately coarse: fine-grained permissions belong in explicit grants, and a
 # household that needs more nuance than this is telling you to write it down.
-ROLE_RANK = {"owner": 3, "adult": 2, "child": 1, "guest": 0}
+# A paid carer ranks with the adults by default: they are trusted to act, and
+# what they may decide is settled by explicit grants like everyone else's.
+ROLE_RANK = {"owner": 3, "adult": 2, "carer": 2, "child": 1, "guest": 0}
 
 
 def _under(domain: str, prefix: str) -> bool:
@@ -47,6 +49,14 @@ class Member:
     # "bedroom.*" outranks an adult there, which is the correct answer and the
     # one a pure role hierarchy gets wrong.
     grants: list = field(default_factory=list)
+    # Other names the house uses for this person. Mum is Rose to her carer and
+    # "I" to herself, and all three have to land on the same member.
+    aliases: list = field(default_factory=list)
+
+    def answers_to(self, name: str) -> bool:
+        n = str(name or "").strip().lower()
+        return bool(n) and (n == self.name.lower()
+                            or n in (a.lower() for a in self.aliases))
 
     def authority_over(self, domain: str) -> int:
         """Higher wins. Explicit grants beat role rank."""
@@ -57,12 +67,12 @@ class Member:
 
     def to_dict(self) -> dict:
         return {"id": self.id, "name": self.name, "role": self.role,
-                "grants": list(self.grants)}
+                "grants": list(self.grants), "aliases": list(self.aliases)}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Member":
         m = cls(name=d["name"], role=d.get("role", "adult"),
-                grants=d.get("grants", []))
+                grants=d.get("grants", []), aliases=d.get("aliases", []))
         m.id = d["id"]
         return m
 

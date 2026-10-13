@@ -154,6 +154,17 @@ SPOKEN_BY_THE_HOUSE = {
     ("media", "volume", "4", None): "The volume is set to 4.",
     ("bedroom", "lights", "off", "Ada"): "Ada's bedroom lights are off.",
     ("bedroom", "bedtime", "20:00", "Ada"): "Ada's bedtime is at eight.",
+    # The care household, where the wording is the difference between a
+    # sentence an 84 year old can act on and a field name.
+    ("medication.warfarin", "per_day", "1", "Mum"): "Mum's warfarin is once a day.",
+    ("medication.warfarin", "time", "09:00", "Mum"): "Mum's warfarin is due at nine.",
+    ("diet", "coffee_cutoff", "15:00", "Mum"): "Mum's coffee stops at three.",
+    ("diet", "alcohol", "none", "Mum"): "Mum's alcohol is off limits.",
+    ("purchases", "limit", "50", None):
+        "The spending limit without asking is 50 dollars.",
+    **{("rota", d, "Tom", None): f"The {d.title()} escort is Tom."
+       for d in ("monday", "tuesday", "wednesday", "thursday", "friday",
+                 "saturday", "sunday")},
 }
 
 
@@ -168,7 +179,8 @@ def test_every_setting_the_house_knows_is_said_in_the_words_written_for_it():
     read back out of SETTINGS, because a test that asks the table what the
     table says agrees with it whatever it has become.
     """
-    assert set(p.SETTINGS) == {(d, s) for d, s, _, _ in SPOKEN_BY_THE_HOUSE}, \
+    assert set(p.SETTINGS) == {(d.partition(".")[0], s)
+                               for d, s, _, _ in SPOKEN_BY_THE_HOUSE}, \
         "a setting was added or removed without a sentence to go with it"
     for (domain, slot, value, about), said in SPOKEN_BY_THE_HOUSE.items():
         assert p.statement(domain, slot, value, about) == said, (domain, slot)
@@ -287,7 +299,12 @@ def test_what_a_member_has_the_say_over_is_said_in_words():
         assert p.domain_label(domain) == label, domain
         assert p.domain_label(domain + ".*") == label + " and everything under it"
     assert set(p.DOMAIN_LABELS) == {"thermostat", "shopping", "meals", "lights",
-                                    "media", "security"}
+                                    "media", "security", "medication", "diet",
+                                    "appointments", "purchases", "transport",
+                                    "rota"}
+    # A medicine is named by itself, never as somebody's possession: the say
+    # over medication.warfarin is "warfarin", not "Warfarin's medication".
+    assert p.domain_label("medication.warfarin") == "warfarin"
     print("PASS authority is said in words:", p.authority_line(["bedroom.*"]))
 
 

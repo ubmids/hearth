@@ -23,9 +23,13 @@ import re
 SYSTEM = (
     "You convert a sentence spoken in a household into structured beliefs. "
     "A belief is (domain, slot, value): domain is the thing being governed "
-    "(thermostat, shopping, meals, lights, media, security), slot is the "
-    "setting within it (target, brand, dinner, bedtime), value is what it was "
-    "set to. If the sentence is about one named person rather than the whole "
+    "(thermostat, shopping, meals, lights, media, security, diet, purchases, "
+    "rota, or medication.<drug> such as medication.warfarin), slot is the "
+    "setting within it (target, brand, dinner, bedtime; for diet coffee_cutoff "
+    "or alcohol; for medication per_day or time; for rota a weekday such as "
+    "thursday; for purchases limit), value is what it was set to (times as "
+    "HH:MM in 24 hours, a rota value is the person's name, 'none' for not "
+    "allowed). If the sentence is about one named person rather than the whole "
     "house, set scope to that person's name. If it is only true inside a "
     "situation that will end (a visit, an illness, a cold snap), set context to "
     "a short name for that situation. Ignore small talk. Respond as JSON: "
@@ -34,6 +38,64 @@ SYSTEM = (
 )
 
 # Deterministic patterns for the fallback. Ordered: first match wins.
+_WORDNUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+            "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+            "twelve": 12, "fifty": 50, "twenty": 20, "thirty": 30, "forty": 40,
+            "hundred": 100, "a hundred": 100, "once": 1, "twice": 2}
+_NUM = r"(\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|a hundred|hundred)"
+_DAYS = r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?"
+
+
+def _n(word) -> int | None:
+    w = str(word).lower().strip().lstrip("$")
+    return int(w) if w.isdigit() else _WORDNUM.get(w)
+
+
+def _hhmm(text) -> str | None:
+    """'three', '3pm', '15:00', 'six' -> 'HH:MM'. Bare small hours are the
+    afternoon, because nobody stops coffee at three in the morning."""
+    m = re.fullmatch(r"\s*(\d{1,2}|\w+)(?:[:.](\d{2}))?\s*(am|pm)?\s*",
+                     str(text).lower())
+    if not m:
+        return None
+    h = _n(m.group(1))
+    if h is None or h > 23:
+        return None
+    mi = int(m.group(2) or 0)
+    if m.group(3) == "pm" and h < 12:
+        h += 12
+    elif not m.group(3) and 1 <= h <= 7:
+        h += 12
+    return f"{h:02d}:{mi:02d}"
+
+
+# The care household's sentences. Each returns (domain, slot, value) or None,
+# and runs before the general rules because "coffee" and "a day" are both
+# words the shopping and meal rules would otherwise misread.
+def _care(text: str):
+    low = text.lower()
+    m = re.search(r"\bcoffee\b.*?\b(?:after|till|until|past|before|by)\s+"
+                  r"(\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)?|\w+)", low)
+    if m and _hhmm(m.group(1)):
+        return "diet", "coffee_cutoff", _hhmm(m.group(1))
+    if re.search(r"\bno (?:wine|alcohol|beer|drinks?|drinking)\b", low):
+        return "diet", "alcohol", "none"
+    m = re.search(r"\b(?:takes?|have|has|gets?)\s+" + _NUM +
+                  r"\s+([a-z]+)\s+(?:a|per|each)\s+day\b", low)
+    if m and _n(m.group(1)):
+        return f"medication.{m.group(2)}", "per_day", str(_n(m.group(1)))
+    m = re.search(r"\b([a-z]+)\s+(?:is\s+)?(once|twice)\s+(?:a|per)\s+day\b", low)
+    if m and m.group(1) not in ("it", "that", "this", "coffee"):
+        return f"medication.{m.group(1)}", "per_day", str(_n(m.group(2)))
+    m = re.search(r"\bup to " + r"\$?" + _NUM + r"(?: dollars| bucks)?\b.*\bwithout\b", low)
+    if m and _n(m.group(1)):
+        return "purchases", "limit", str(_n(m.group(1)))
+    m = re.search(r"\bi(?:'ll| will| can)?\s+(?:take|do|drive|cover)\b.*?\b" + _DAYS, low)
+    if m:
+        return "rota", m.group(1), "{speaker}"
+    return None
+
+
 RULES = [
     # Specific before general: a sentence naming the thermostat should not be
     # caught by the bare-number rule underneath it.
@@ -50,6 +112,8 @@ RULES = [
 ]
 
 CONTEXT_HINTS = [
+    (r"\bwhile (?:she|he|they)(?:'s| is| are|'re) on (?:the |her |his |their )?([a-z ]+?)(?:$|[,.!])",
+     "the {0}"),
     (r"while ([\w' ]+?) (?:is|are) (?:here|staying|visiting)", "{0}'s visit"),
     (r"until ([\w' ]+?) (?:goes|go) home", "{0}'s visit"),
     (r"\b(cold snap|heatwave|half term|the flu)\b", "the {0}"),
@@ -77,6 +141,17 @@ def _find_scope(text: str, member_names: dict) -> str | None:
 def rule_extract(text: str, member_names: dict | None = None) -> list[dict]:
     member_names = member_names or {}
     out = []
+    care = _care(text)
+    if care:
+        domain, slot, value = care
+        scope = _find_scope(text, member_names)
+        if scope is None and domain.split(".")[0] in ("diet", "medication"):
+            # "Mom can have coffee till six" is about Mom without a "for" or a
+            # possessive. In these domains a named member is who it is about.
+            scope = next((mid for name, mid in member_names.items()
+                          if re.search(rf"\b{re.escape(name)}\b", text, re.I)), None)
+        return [{"domain": domain, "slot": slot, "value": value,
+                 "scope": scope, "context": _find_context(text)}]
     for pat, domain, slot, group in RULES:
         m = re.search(pat, text, re.I)
         if not m:
@@ -142,6 +217,7 @@ def extract(text: str, member_names: dict | None = None) -> list[dict]:
 # ending is the same problem as detecting the opening, and it was missing.
 
 END_PATTERNS = [
+    r"\b(?:finished|done with|off|stopped|completed) (?:the |her |his |their )?([a-z' ]+?)(?: course)?(?:$|[,.!])",
     r"\b([\w' ]+?) (?:has |have )?(?:gone|went) home\b",
     r"\b([\w' ]+?)(?:'s)? (?:visit|stay) is over\b",
     r"\bthe (cold snap|heatwave|half term|flu) (?:is|has) (?:over|ended|passed|broken)\b",

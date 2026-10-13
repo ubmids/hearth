@@ -25,6 +25,8 @@ import re
 DEGREES = "degrees"
 TIME = "time"
 PLAIN = "plain"
+PER_DAY = "per_day"        # "1" is "once a day", not "1"
+MONEY = "money"            # "50" is "50 dollars"
 
 # (domain, slot) -> (subject, verb, unit).
 #
@@ -44,6 +46,16 @@ SETTINGS = {
     ("media", "volume"): ("the volume", "is set to", PLAIN),
     ("bedroom", "lights"): ("{whose} bedroom lights", "are", PLAIN),
     ("bedroom", "bedtime"): ("{whose} bedtime", "is at", TIME),
+    # The care household. `{tail}` is the specific thing at the end of a dotted
+    # domain, so medication.warfarin about Mum is "Mum's warfarin".
+    ("medication", "per_day"): ("{whose} {tail}", "is", PER_DAY),
+    ("medication", "time"): ("{whose} {tail}", "is due at", TIME),
+    ("diet", "coffee_cutoff"): ("{whose} coffee", "stops at", TIME),
+    ("diet", "alcohol"): ("{whose} alcohol", "is", PLAIN),
+    ("purchases", "limit"): ("the spending limit without asking", "is", MONEY),
+    **{("rota", d): (f"the {d.title()} escort", "is", PLAIN)
+       for d in ("monday", "tuesday", "wednesday", "thursday", "friday",
+                 "saturday", "sunday")},
 }
 
 # What a member has the say over, for the people panel. Grants name a domain
@@ -55,7 +67,16 @@ DOMAIN_LABELS = {
     "lights": "the lights",
     "media": "what plays",
     "security": "the locks and alarm",
+    "medication": "medication",
+    "diet": "what she eats and drinks",
+    "appointments": "appointments",
+    "purchases": "spending",
+    "transport": "rides",
+    "rota": "the rota",
 }
+
+# Values that mean something other than themselves when said out loud.
+_WORDS = {"none": "off limits", "no": "off limits"}
 
 _NUMBER = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
            7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven",
@@ -148,6 +169,10 @@ def _unit(domain: str, slot: str, value: str) -> str:
 def subject(domain: str, slot: str, about: str | None = None) -> str:
     """What the setting is called out loud. "the thermostat", "Ada's dinner"."""
     template, _, _, tail = _entry(domain, slot)
+    if "{tail}" in template:
+        whose = possessive(about) if about else "the"
+        return template.format(whose=whose,
+                               tail=(tail or "").replace("_", " "))
     if "{whose}" in template:
         whose = (possessive(about) if about else
                  possessive(tail.replace("_", " ").title()) if tail else "the")
@@ -165,10 +190,29 @@ def spoken(domain: str, slot: str, value: str) -> str:
     unit = _unit(domain, slot, value)
     if unit == DEGREES:
         return f"{value} degrees"
+    if unit == PER_DAY:
+        return _per_day(value)
+    if unit == MONEY:
+        return _money(value)
     clock = _clock(value)
     if unit == TIME and clock:
         return _spoken_clock(*clock)
-    return str(value)
+    return _WORDS.get(str(value).strip().lower(), str(value))
+
+
+def _per_day(value) -> str:
+    v = str(value).strip()
+    return {"1": "once a day", "2": "twice a day"}.get(
+        v, f"{v} times a day" if v.isdigit() else v)
+
+
+def _money(value) -> str:
+    v = str(value).strip().lstrip("$")
+    try:
+        n = float(v)
+    except ValueError:
+        return str(value)
+    return f"{int(n)} dollars" if n == int(n) else f"{n:.2f} dollars"
 
 
 def reading(domain: str, slot: str, value: str) -> str:
@@ -177,6 +221,11 @@ def reading(domain: str, slot: str, value: str) -> str:
     unit = _unit(domain, slot, value)
     if unit == DEGREES:
         return f"{value}°"
+    if unit == PER_DAY:
+        return {"1": "1× daily", "2": "2× daily"}.get(str(value).strip(),
+                                                      f"{value}× daily")
+    if unit == MONEY:
+        return f"${str(value).strip().lstrip('$')}"
     clock = _clock(value)
     if unit == TIME and clock:
         h, mi = clock
@@ -241,6 +290,8 @@ def domain_label(domain: str) -> str:
     d = domain[:-2] if wild else domain
     if d in DOMAIN_LABELS:
         label = DOMAIN_LABELS[d]
+    elif "." in d and d.partition(".")[0] == "medication":
+        label = d.partition(".")[2].replace("_", " ")   # "warfarin"
     elif "." in d:
         head, _, tail = d.partition(".")
         label = f"{possessive(tail.replace('_', ' ').title())} {head.replace('_', ' ')}"
