@@ -10,6 +10,9 @@ An Alexa+ add-on, built as a self-hosted MCP server.**
 
 ![The simulated Alexa+ kitchen Echo Show stopping a second warfarin, with the live MCP traffic beside it](docs/img/hold-on-rose.jpg)
 
+[Listen to the whole household (2 min)](demo/hold-on-rose.m4a) ·
+[transcript](demo/transcript.md). Every Alexa line is Hearth's real answer.
+
 Nobody told Alexa that in the moment. Grace, the home aide, logged the morning
 dose four hours earlier. Ada, Rose's daughter, set the rule twelve days ago from
 the cardiologist's letter. Hearth held both, and it was Hearth, not the language
@@ -63,7 +66,7 @@ why.
                                                     * sandbox providers
 ```
 
-- **MCP spec 2025-11-25 over Streamable HTTP**, hand-rolled, 14 tools with
+- **MCP spec 2025-11-25 over Streamable HTTP**, hand-rolled, 13 tools with
   annotations, `structuredContent` on every visual result, and an
   [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view named in
   `_meta.ui.resourceUri` on both the tool and the result (the Alexa+ docs read
@@ -102,6 +105,11 @@ Voice: Amazon Polly neural if AWS keys are set, otherwise
 then set `HEARTH_PIPER_VOICE` to a voice model), otherwise the browser's voice.
 See `.env.example`.
 
+**Any MCP client can use it.** `demo/assistant.py` runs Claude Code as the
+client, with Hearth's Agent Skill (`skills/hearth-care/SKILL.md`) as its
+instructions, against the same server, then reads back the server's record of
+what it called.
+
 To reach it from Alexa+ once the toolkit is available to you:
 
 ```bash
@@ -116,8 +124,10 @@ for t in tests/test_*.py; do [ "$t" = tests/test_live.py ] || python3 $t; done
 python3 tests/test_live.py https://<deployment>    # the same checks over the network
 ```
 
-154 tests, all green: 61 Alexa+ conformance, 21 care and record, 23 contest
-resolution, 18 phrasing, 17 extraction, 8 listing, 6 simulator. The suite has
+158 tests, all green: 61 Alexa+ conformance, 24 care and record, 23 contest
+resolution, 18 phrasing, 17 extraction, 9 listing, 6 simulator.
+`python3 demo/shots.py http://localhost:8000 shots` plays every scene on the
+simulated client in a headless browser and fails on any page error. The suite has
 been mutation tested; see [docs/ENGINEERING.md](docs/ENGINEERING.md).
 
 ## What is real and what is not

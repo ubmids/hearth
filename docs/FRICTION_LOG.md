@@ -5,7 +5,7 @@ is something that actually cost time on this build, in the format the hackathon
 rules ask for: task attempted, steps taken, expected versus actual, severity,
 workaround, suggestion.
 
-Entries 1 to 4 come from the first build (transport and OAuth). Entries 5 to 10
+Entries 1 to 4 come from the first build (transport and OAuth). Entries 5 to 11
 come from the October rebuild around a care household, when Hearth added MCP
 Apps visuals, a checkout, cross-session memory and a simulated Alexa+ client,
 and every one of them is a place where the Alexa+ add-on documentation and the
@@ -300,12 +300,53 @@ confirmation with key details before any high-consequence action" and to
 **Actual.** The add-on docs never mention the annotations, so it is unclear
 whether Alexa+ uses them to decide when to confirm, or ignores them.
 
-**Workaround.** Hearth sets them on all 14 tools and enforces the consequential
+**Workaround.** Hearth sets them on all 13 tools and enforces the consequential
 refusals (a second dose, an order over the limit) in server code, since the MCP
 spec says clients must treat annotations as untrusted anyway.
 
 **Suggestion.** Say whether Alexa+ reads tool annotations, and which ones
 trigger a confirmation turn.
+
+---
+
+## 11. "Agent Skill" names three different things, and none of them says what Alexa+ loads
+
+**Severity: medium.** It decides which of the two Stage One paths a developer
+takes ("a working Agent Skill or a self-hosted MCP server"), and the docs
+cannot settle it.
+
+**Task attempted.** Ship an Agent Skill alongside the MCP server, since the
+rules list Agent Skills as a creative choice.
+
+**Steps taken.** Searched the Alexa+ add-on docs and the hackathon pages for
+what an Alexa+ Agent Skill is.
+
+**Expected.** One definition: the format, where it is loaded, and whether
+Alexa+ itself reads it at runtime.
+
+**Actual.** Three meanings, none of them the runtime one:
+
+- the hackathon rules use "Agent Skill" as a deliverable equal to an MCP
+  server, and link the open Agent Skills format;
+- the MCP Toolkit overview uses "the add-on Agent Skill (agentic onboarding
+  experience)" for a skill that helps a coding agent *deploy* an add-on
+  ([MCP Toolkit overview](https://developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-overview.html));
+- the Category SDK has an "Action Skill", again for a coding agent (Kiro,
+  Claude Code, Cursor) building an add-on, not for Alexa+ using one.
+
+Nothing says whether Alexa+ reads a `SKILL.md` that an add-on ships, which is
+the one meaning that would change how an add-on behaves for customers. The
+older word "Alexa Skill" (the ASK kind) is still in every search result too.
+
+**Workaround.** Hearth ships `skills/hearth-care/SKILL.md` in the open Agent
+Skills format: which tool to call for which request, the safety rules that must
+never be overridden, and how payment is handed off. It is written for any
+agent that uses Hearth, and `demo/assistant.py` runs it with Claude Code as the
+MCP client against the same server, so it is exercised, not just written.
+
+**Suggestion.** One paragraph on the add-ons home page: whether Alexa+ loads
+skills from an add-on at runtime and from where, and a different name for the
+onboarding skill (an "add-on builder skill") so the two stop colliding.
 
 ---
 
