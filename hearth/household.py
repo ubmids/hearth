@@ -18,15 +18,25 @@ class Household:
         self.store = store
         self.members: dict[str, Member] = {}
         self.beliefs: list[Belief] = []
+        # When a list, every belief a resolution weighs is appended to it. The
+        # MCP layer sets it around each tool call so the record of the call can
+        # name what it read, computed rather than claimed.
+        self.reads: list | None = None
         if store:
             self.members, self.beliefs = store.load()
 
     # --- people ------------------------------------------------------------
-    def add_member(self, name, role="adult", grants=None) -> Member:
-        m = Member(name=name, role=role, grants=grants or [])
+    def add_member(self, name, role="adult", grants=None, aliases=None) -> Member:
+        m = Member(name=name, role=role, grants=grants or [],
+                   aliases=aliases or [])
         self.members[m.id] = m
         self._persist()
         return m
+
+    def member_named(self, name) -> Member | None:
+        """The member a spoken name refers to, by name or alias, any case."""
+        return next((m for m in self.members.values() if m.answers_to(name)),
+                    None)
 
     def name_of(self, member_id: str) -> str:
         m = self.members.get(member_id)
@@ -126,6 +136,8 @@ class Household:
             return (1 if b.scope is not None else 0, self._authority(b), b.stated_at)
 
         ordered = sorted(live, key=rank, reverse=True)
+        if self.reads is not None:
+            self.reads.extend(b.id for b in ordered)
         winner, rest = ordered[0], ordered[1:]
 
         losers, basis = [], "sole live belief"

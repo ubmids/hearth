@@ -21,10 +21,22 @@ class Action:
     at: float = field(default_factory=time.time)
     resolution: Resolution | None = None
     outcome: str = "done"                       # done | refused | failed
+    # Who the action was taken for or at the word of, as the house names them.
+    by: str | None = None
+    # "hearth": Hearth took the action itself and wrote this at that moment.
+    # "reported": the agent told Hearth, through `did`, that it acted. The two
+    # are kept apart because only the first is something Hearth can vouch for.
+    source: str = "hearth"
+    # For a reported action: had the agent asked Hearth about this setting, in
+    # the same MCP session, before it says it acted? Read off Hearth's own
+    # record of calls, never off the agent's say-so. None when not applicable.
+    checked: bool | None = None
+    note: str = ""                              # a fact the reason needs, e.g. the dose already given
 
     def to_dict(self) -> dict:
         return {"id": self.id, "what": self.what, "domain": self.domain,
-                "at": self.at, "outcome": self.outcome,
+                "at": self.at, "outcome": self.outcome, "by": self.by,
+                "source": self.source, "checked": self.checked, "note": self.note,
                 "resolution": self.resolution.to_dict() if self.resolution else None}
 
     @classmethod
@@ -32,7 +44,9 @@ class Action:
         a = cls(what=d["what"], domain=d["domain"],
                 outcome=d.get("outcome", "done"),
                 resolution=(Resolution.from_dict(d["resolution"])
-                            if d.get("resolution") else None))
+                            if d.get("resolution") else None),
+                by=d.get("by"), source=d.get("source", "hearth"),
+                checked=d.get("checked"), note=d.get("note", ""))
         a.id = d["id"]
         a.at = d["at"]
         return a
@@ -52,8 +66,12 @@ class Ledger:
         self.actions: list[Action] = (
             [Action.from_dict(a) for a in store.load_actions()] if store else [])
 
-    def record(self, what, domain, resolution=None, outcome="done") -> Action:
-        a = Action(what=what, domain=domain, resolution=resolution, outcome=outcome)
+    def record(self, what, domain, resolution=None, outcome="done", *, by=None,
+               source="hearth", checked=None, note="", at=None) -> Action:
+        a = Action(what=what, domain=domain, resolution=resolution, outcome=outcome,
+                   by=by, source=source, checked=checked, note=note)
+        if at is not None:
+            a.at = at
         self.actions.append(a)
         if self.store:
             self.store.save_actions(self.actions)
@@ -74,10 +92,19 @@ class Ledger:
         a = self._find(action_id) if action_id else self.last(domain)
         if a is None:
             return "I have not done anything like that."
-        if a.resolution is None:
-            return f"I {a.what}, but I did not record what that was based on."
-        return (f"I {a.what} because "
-                + a.resolution.explain(self.household.name_of, value_spoken))
+        if a.resolution is None or a.resolution.winner is None:
+            line = f"I {a.what}, but I did not record what that was based on."
+        else:
+            line = (f"I {a.what} because "
+                    + a.resolution.explain(self.household.name_of, value_spoken))
+        if a.note:
+            line += " " + a.note
+        if a.source == "reported" and a.checked is False:
+            # Hearth's own record says the agent never asked before it acted.
+            # Saying so is the difference between a ledger and a diary.
+            line += (" That action was reported to me afterwards; I was not "
+                     "asked before it was taken.")
+        return line
 
     def _find(self, action_id):
         return next((a for a in self.actions if a.id == action_id), None)

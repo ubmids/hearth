@@ -55,3 +55,20 @@ class Store:
     def save_actions(self, actions):
         with self._lock:
             self._write(self._actions_path(), [a.to_dict() for a in actions])
+
+    # The record of every tool call, and the care services' own books (doses
+    # given, appointments, orders, the family board). Each is its own file so a
+    # service that writes often never rewrites the household's beliefs.
+    def load_trace(self):
+        return self.load_aux("trace") or []
+
+    def save_trace(self, entries):
+        self.save_aux("trace", [e.to_dict() for e in entries])
+
+    def load_aux(self, name):
+        with self._lock:
+            return self._read(f"{self.path}.{name}.json")
+
+    def save_aux(self, name, data):
+        with self._lock:
+            self._write(f"{self.path}.{name}.json", data)
