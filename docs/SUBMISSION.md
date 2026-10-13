@@ -12,7 +12,7 @@ the friction log (`docs/FRICTION_LOG.md`, 11 platform entries).
 MCP server, implementing MCP spec version 2025-11-25 … over Streamable HTTP",
 or a simulated Alexa+ experience whose source is in the repo. Hearth is the MCP
 server (and ships an Agent Skill), and the simulated client is in the repo at
-`hearth/web/alexa.html`. 61 conformance tests assert the protocol version on
+`hearth/web/alexa.html`. 62 conformance tests assert the protocol version on
 the handshake and the header.
 
 **Pre-existing work.** The repository was first committed on 14 September
@@ -116,8 +116,9 @@ family's shared memory and its conscience.
   that teaches any agent to use Hearth safely. `demo/assistant.py` runs it with
   Claude Code as the MCP client against the same server.
 - **One household per account**, isolated, persisted to disk.
-- **158 tests**, 61 of them Alexa+ conformance. The suite has been mutation
-  tested.
+- **160 tests**, 62 of them Alexa+ conformance, plus an interop test in which
+  the official MCP Python SDK client talks to Hearth unmodified. The suite has
+  been mutation tested.
 
 ### Simulated, and why
 

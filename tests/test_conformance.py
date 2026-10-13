@@ -1539,6 +1539,29 @@ def test_a_failed_keepalive_ping_never_takes_the_service_down():
     print("PASS a failed keepalive ping is logged and swallowed")
 
 
+def test_delete_ends_a_session_and_nothing_else():
+    """Streamable HTTP: a client leaving sends DELETE with its session id. The
+    session goes; the household and the record of what was called stay."""
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    r = rpc(c, tok, "initialize", {"protocolVersion": PROTOCOL_VERSION})
+    sid = r.headers["mcp-session-id"]
+    assert rpc(c, tok, "tools/call", {"name": "whats_true", "arguments": {
+        "domain": "thermostat", "slot": "target"}}, sid=sid).status_code == 200
+    assert c.delete("/mcp", headers={"Mcp-Session-Id": sid}).status_code == 401
+    gone = c.delete("/mcp", headers={"Authorization": f"Bearer {tok}",
+                                     "Mcp-Session-Id": sid})
+    assert gone.status_code == 204, gone.status_code
+    assert gone.headers["mcp-protocol-version"] == PROTOCOL_VERSION
+    assert rpc(c, tok, "tools/list", sid=sid).status_code == 404
+    again = c.delete("/mcp", headers={"Authorization": f"Bearer {tok}",
+                                      "Mcp-Session-Id": sid})
+    assert again.status_code == 404
+    assert c.delete("/mcp", headers={"Authorization": f"Bearer {tok}"}).status_code == 400
+    assert [e.tool for e in app.state.home_for("household")[2].trace.entries] == ["whats_true"]
+    print("PASS DELETE ends a session, and only the session")
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

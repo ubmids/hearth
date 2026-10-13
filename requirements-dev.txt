@@ -1,0 +1,4 @@
+# For the interop test and the browser rehearsal. Not needed to run Hearth.
+-r requirements.txt
+mcp>=2.3
+playwright>=1.50

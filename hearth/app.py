@@ -327,6 +327,26 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
             return timed(None, 202)          # notifications are accepted with no body
         return timed(result)
 
+    @app.delete("/mcp")
+    async def mcp_end_session(request: Request):
+        # Streamable HTTP: a client leaving says so with DELETE and its session
+        # id. The official SDK client does this on close. Ending a session
+        # forgets the transport session only; the household's memory, and the
+        # record of what was called in it, stay.
+        caller = auth.verify(request.headers.get("authorization"))
+        if caller is None:
+            return _unauthorized()
+        _, _, server = home_for(caller.subject)
+        sid = request.headers.get("mcp-session-id")
+        headers = {"MCP-Protocol-Version": PROTOCOL_VERSION}
+        if not sid:
+            return JSONResponse({"error": "Mcp-Session-Id required"},
+                                status_code=400, headers=headers)
+        if server.sessions.pop(sid, None) is None:
+            return JSONResponse({"error": "no such session"}, status_code=404,
+                                headers=headers)
+        return Response(status_code=204, headers=headers)
+
     # --- console surface ---------------------------------------------------
     # The console is an operator view, not a second way in. It speaks to the
     # same bearer-protected API, and the only concession to convenience is that

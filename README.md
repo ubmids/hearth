@@ -124,8 +124,11 @@ for t in tests/test_*.py; do [ "$t" = tests/test_live.py ] || python3 $t; done
 python3 tests/test_live.py https://<deployment>    # the same checks over the network
 ```
 
-158 tests, all green: 61 Alexa+ conformance, 24 care and record, 23 contest
-resolution, 18 phrasing, 17 extraction, 9 listing, 6 simulator.
+160 tests, all green: 62 Alexa+ conformance, 24 care and record, 23 contest
+resolution, 18 phrasing, 17 extraction, 9 listing, 6 simulator, and one
+interop test in which the **official MCP Python SDK client** (`pip install -r
+requirements-dev.txt`) negotiates 2025-11-25 with Hearth over a real socket,
+lists the tools, gets the refused dose with its card, and closes its session.
 `python3 demo/shots.py http://localhost:8000 shots` plays every scene on the
 simulated client in a headless browser and fails on any page error. The suite has
 been mutation tested; see [docs/ENGINEERING.md](docs/ENGINEERING.md).
