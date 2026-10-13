@@ -75,7 +75,7 @@ class Trace:
         e.hash = e.digest()
         self.entries.append(e)
         if self.store:
-            self.store.save_trace(self.entries)
+            self.store.append_trace(e.to_dict())       # one line, O(1)
         return e
 
     def verify(self) -> tuple[bool, int | None]:

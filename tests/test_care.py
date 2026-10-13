@@ -508,6 +508,82 @@ def test_a_sibling_last_checked_in_on_a_real_evening():
     print("PASS catch-up names a real evening:", reply[:60])
 
 
+# --- the record on disk: append-only, flat cost (red-team audit 028, #14) ----
+def _server_ms(r):
+    return float(r.headers["server-timing"].split("dur=")[1].split(";")[0])
+
+
+def test_the_record_costs_the_same_at_five_thousand_calls_as_at_fifty():
+    """Every call used to rewrite the whole record file, so Server-Timing for
+    check_dose grew linearly: 2 ms at 500 calls, 22 ms at 3,000 (measured
+    before the fix). Appending one line keeps it flat."""
+    import statistics
+    tmp = tempfile.mkdtemp(prefix="hearth-flat-")
+    try:
+        house = House(data_path=os.path.join(tmp, "house"))
+        body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "check_dose",
+                           "arguments": {"medication": "warfarin", "asked_by": "Tom"}}}
+        times = []
+        for _ in range(5000):
+            r = house.c.post("/mcp", json=body, headers=house.headers)
+            times.append(_server_ms(r))
+        early, late = statistics.median(times[50:550]), statistics.median(times[-500:])
+        assert late < max(3 * early, early + 2.0), (early, late)
+        stem = os.path.join(tmp, "house." + house.subject)
+        lines = open(stem + ".trace.jsonl").read().splitlines()
+        assert len(lines) == 5000, len(lines)
+        assert not os.path.exists(stem + ".trace.json")
+        assert House(data_path=os.path.join(tmp, "house")).server.trace.verify() == (True, None)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(f"PASS the record stays flat: p50 {early:.2f} ms early, {late:.2f} ms at 5,000")
+
+
+def test_a_record_in_the_old_format_is_carried_over_and_still_verifies():
+    import json as _json
+    tmp = tempfile.mkdtemp(prefix="hearth-legacy-")
+    try:
+        path = os.path.join(tmp, "house")
+        old = Trace()
+        for i in range(3):
+            old.append(tool="check_dose", args={"i": i}, outcome="ok", summary="x")
+        with open(path + ".trace.json", "w") as f:
+            _json.dump([e.to_dict() for e in old.entries], f)
+        from hearth.store import Store
+        t = Trace(store=Store(path))
+        assert len(t.entries) == 3 and t.verify() == (True, None)
+        t.append(tool="record", args={}, outcome="ok", summary="y")
+        again = Trace(store=Store(path))
+        assert [e.seq for e in again.entries] == [1, 2, 3, 4]
+        assert again.verify() == (True, None)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("PASS an old whole-file record moves to the append-only file intact")
+
+
+def test_a_torn_last_line_is_dropped_but_damage_in_the_middle_breaks_the_chain():
+    from hearth.store import Store
+    tmp = tempfile.mkdtemp(prefix="hearth-torn-")
+    try:
+        path = os.path.join(tmp, "house")
+        t = Trace(store=Store(path))
+        for i in range(4):
+            t.append(tool="check_dose", args={"i": i}, outcome="ok", summary="x")
+        f = path + ".trace.jsonl"
+        lines = open(f).read().splitlines()
+        # A crash mid-write: the last line is half there.
+        open(f, "w").write("\n".join(lines[:3] + [lines[3][:20]]) + "\n")
+        crashed = Trace(store=Store(path))
+        assert len(crashed.entries) == 3 and crashed.verify() == (True, None)
+        # Somebody mangles entry 2 by hand.
+        open(f, "w").write("\n".join([lines[0], "{oops", lines[2], lines[3]]) + "\n")
+        assert Trace(store=Store(path)).verify() == (False, 2)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("PASS a torn tail is a crash, a torn middle is a broken chain")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
