@@ -11,16 +11,16 @@
           "value": "Hearth",
           "spokenForm": {
             "format": "ipa",
-            "value": "h\u0251\u02d0\u03b8"
+            "value": "hɑːθ"
           }
         },
-        "shortDescription": "Remembers who in the house said what, when, and whether it still holds.",
-        "fullDescription": "Alexa+ takes actions now, not just answers, and that changes what goes wrong. A wrong answer is annoying. A wrong action is a breach of trust.\n\nA home is the hardest place to get this right, because household state is contested. Several people, competing preferences, different authority, and facts that quietly expire. Dad set the thermostat rule. The kid overrode it. Someone was ill last week. You changed coffee in March.\n\nHearth gives Alexa+ a household memory with the three things ordinary memory leaves out. Provenance: every preference records who said it, when, and in what situation, so it is never just \u201cthermostat at 19\u201d but \u201cDad, three weeks ago, during the cold snap\u201d. Supersession: preferences are retired rather than overwritten, so you can ask what the house used to think and when it changed its mind. Contest resolution: when two people disagree, Hearth resolves by authority and recency and then explains the resolution instead of silently picking one.\n\nOn top sits an action ledger. Every autonomous action is recorded against the exact preferences that justified it, so \u201cwhy did you do that\u201d has a real answer. Retire one preference out loud and the behaviour changes, with no app and no settings screen.\n\nSituations end, too. \u201cGran has gone home\u201d closes everything that was only true while she was staying, without anyone having to remember what those things were.\n\nOpen source under the MIT licence.",
+        "shortDescription": "Keeps a family caring for a parent on the same page: stops a second dose, sorts appointments, and says why.",
+        "fullDescription": "When a family looks after a parent, the care is split between a daughter with the doctor's letters, a son in another state, a home aide on weekday mornings, and the parent herself, who sometimes forgets. Nobody holds the whole picture. Hearth gives Alexa+ that picture.\n\nHearth remembers who said what, when, and whose word counts for which decision. Ada holds Mom's health care proxy, so her rule about medication stands over anyone else's. It keeps the day's record: which dose was given, by whom, at what time. So when Mom goes to take her blood thinner a second time, Alexa says: \"Hold on, Rose. Grace gave you today's warfarin at 9:10 this morning. It's once a day, so not another until tomorrow.\" Hearth makes that refusal itself, from the family's own rule and today's record, and writes it down.\n\nOne sentence can do several things. \"Mom's cardiology moved to Thursday at ten, sort it out\" moves the appointment, works out from the family rota who is taking her, cancels the old ride, books a new one, and tells the family.\n\nIt remembers across days and devices. A son who checks in from his own Echo hears only what changed since he last asked, including anything Alexa stopped.\n\nIt explains itself. Ask why, and Alexa names the rule, who set it, when, and why it won over anyone who disagreed. Situations end by themselves too: a rule that only applies while she is on antibiotics stops when someone says the course is finished.\n\nRefills are prepared as an Alexa checkout, inside the spending limit the family set, with a warning if the same thing was ordered this week. Every action is written to a record the family can read, and the record shows if anything has been changed.\n\nHearth is not a medical device. It follows the rules the family gives it. Open source under the MIT licence.",
         "examplePhrases": [
-          "Why did you set the thermostat to twenty four?",
-          "The cold snap is over",
-          "What did Dad say about the thermostat?",
-          "Who decided dinner is at seven?"
+          "I'm just going to take my blood thinner",
+          "What did I miss with Mom today?",
+          "Mom's cardiology moved to Thursday at ten, sort it out",
+          "Why did you stop her?"
         ],
         "privacyAndCompliance": {
           "privacyPolicyUrl": "https://hearth-sh3u.onrender.com/privacy",
@@ -59,7 +59,7 @@
           "carouselImages": [
             {
               "uri": "https://hearth-sh3u.onrender.com/assets/carousel-1.png",
-              "altText": "Hearth explaining why the thermostat is at 24: Dad set it three weeks ago during a cold snap, and offering to stand that down.",
+              "altText": "Hearth on an Echo Show stopping a second dose of warfarin: Grace gave it at 9:10 this morning, and the family's rule is once a day.",
               "size": "600x900"
             }
           ],

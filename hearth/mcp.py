@@ -618,7 +618,7 @@ class HearthMCP:
         w = st["per_day"].winner
         if not w:
             return "Nobody has told me how often it is taken."
-        return (f"{self.h.name_of(w.holder)} set "
+        return (f"{self.h.name_of(w.holder)} set it to "
                 f"{phrasing.spoken(w.domain, w.slot, w.value)}, "
                 f"{carelib.when_said(w.stated_at, self._now)}")
 
@@ -663,6 +663,9 @@ class HearthMCP:
                 "body": "Not another until tomorrow.",
                 "items": self._dose_items(st) + [{
                     "label": "The rule", "detail": self._rule_meta(st),
+                    "meta": (phrasing.said("", "", "", st["per_day"].winner.content)
+                             if st["per_day"].winner and st["per_day"].winner.content
+                             else None),
                     "status": "info"}],
                 "footer": "Second dose stopped by Hearth and recorded"},
                 outcome="refused", medication=med)

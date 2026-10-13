@@ -125,6 +125,31 @@ def test_this_app_serves_everything_the_listing_promises():
     print(f"PASS all {len(declared)} declared URLs are served by this app")
 
 
+def test_the_agent_skill_follows_the_agent_skills_spec():
+    """agentskills.io: a directory holding SKILL.md whose YAML front matter has
+    a `name` (at most 64 characters, lowercase letters, digits and hyphens,
+    equal to the directory name) and a `description` (at most 1024). A skill
+    that breaks either is skipped by the agent loading it, silently."""
+    import re
+    root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "skills")
+    dirs = [d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))]
+    assert dirs, "no skills"
+    for d in dirs:
+        text = open(os.path.join(root, d, "SKILL.md"), encoding="utf-8").read()
+        m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+        assert m, d
+        front = dict(re.findall(r"^(\w[\w-]*):\s*(.+)$", m.group(1), re.M))
+        assert front["name"] == d, (front["name"], d)
+        assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", d) and len(d) <= 64, d
+        assert 0 < len(front["description"]) <= 1024, len(front["description"])
+        # Every tool the skill tells an agent to call must exist on the server.
+        from hearth.mcp import TOOLS
+        named = set(re.findall(r"`(\w+)\(", text))
+        assert named and named <= {t["name"] for t in TOOLS}, named
+    print(f"PASS {len(dirs)} agent skill(s) valid")
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

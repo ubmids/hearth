@@ -1,159 +1,144 @@
 # Hearth
 
-**The household memory Alexa+ can be trusted with.**
+**The memory and the conscience of a family caring for someone.
+An Alexa+ add-on, built as a self-hosted MCP server.**
 
-Alexa+ is agentic now. It takes actions instead of answering questions, and that flips
-the failure mode: a wrong answer is annoying, a wrong action is a breach of trust.
+> **Rose, 84, in her kitchen:** Alexa, I'm just going to take my blood thinner.
+>
+> **Alexa:** Hold on, Rose. Grace gave you today's warfarin at 9:10 this morning.
+> Your warfarin is once a day, so not another until tomorrow.
 
-A home is the hardest place to get this right, because household state is *contested*.
-Several people, competing preferences, different authority, and facts that quietly expire.
-Dad set the thermostat rule. The kid overrode it. Someone is ill this week. You switched
-coffee brands in March. A stateless assistant re-derives all of it from nothing every turn,
-and when it gets it wrong you have no way to find out why.
+![The simulated Alexa+ kitchen Echo Show stopping a second warfarin, with the live MCP traffic beside it](docs/img/hold-on-rose.jpg)
 
-Hearth is a self-hosted MCP server that gives an agent a household memory with the three
-things ordinary memory stores do not have.
+Nobody told Alexa that in the moment. Grace, the home aide, logged the morning
+dose four hours earlier. Ada, Rose's daughter, set the rule twelve days ago from
+the cardiologist's letter. Hearth held both, and it was Hearth, not the language
+model, that refused the dose and wrote the refusal down.
 
-- **Provenance** — every belief records who said it, when, and in what context. Not
-  "thermostat at 19" but "Dad, three weeks ago, during the cold snap."
-- **Supersession** — beliefs are retired, not overwritten. You can ask what the assistant
-  used to think and when it changed its mind.
-- **Contest resolution** — when two people hold conflicting beliefs, Hearth resolves by
-  authority and recency and then *explains the resolution*, instead of silently picking one.
+## Why this matters
 
-On top sits the **action ledger**: every autonomous action is recorded against the specific
-memories that justified it. Ask "why did you do that?" and get a real chain. Retire one
-belief and the behaviour changes.
+**63 million Americans** are family caregivers, nearly 50% more than in 2015
+([AARP and the National Alliance for Caregiving, 2025](https://www.aarp.org/pri/topics/ltss/family-caregiving/caregiving-in-the-us-2025/)).
+Care for one parent is split between a daughter with the doctor's letters, a son
+two states away, a paid aide on weekday mornings, and the parent herself, who
+forgets. Nobody holds the whole picture, and the gaps are where people get hurt.
 
-## Run it
+Older Americans have about **100,000 emergency hospitalizations a year** for
+adverse drug events. Two thirds are **unintentional overdoses**, and **warfarin
+is involved in a third** of them
+([Budnitz et al., NEJM 2011](https://pubmed.ncbi.nlm.nih.gov/22111719/)).
+
+The one device in that house that hears everybody is the speaker in the
+kitchen. Alexa+ can act now, which makes it useful there and dangerous there:
+an assistant that acts on a family's behalf has to know who said what, whose
+word counts, what has already been done today, and it has to be able to say
+why.
+
+## What Hearth does
+
+| | |
+|---|---|
+| **Stops the second dose** | `give_dose` checks the family's rule (once a day, set by Ada, who holds the health care proxy) against today's record (given 9:10, by Grace) and refuses. In code, on the server, whatever the model would have said. |
+| **Sorts it out across services, in one request** | "Mom's cardiology moved to Thursday at ten, sort it out." Calendar moved, Tom assigned because the family rota says he does Thursdays, Tuesday's ride cancelled, a new ride booked for 9:15, a dose due during the trip flagged, the family board told. Five services, one sentence, every step on the record. |
+| **Remembers across sessions and devices** | Tom, on his own Echo Dot that evening: "What did I miss with Mom?" Hearth knows when he last talked to the house and tells him only what changed since, including the dose it stopped. |
+| **Settles disagreements, and says how** | Tom says Mom can have coffee till six; Ada said three because it keeps her up. "Mom's coffee stops at three. Tom said six, but Ada has the say over what she eats and drinks." |
+| **Lets situations end** | "No wine while she's on the antibiotics" holds until "Mom finished the antibiotics", then stops applying by itself. |
+| **Buys, the Alexa+ way** | "We're nearly out of her warfarin, reorder it" opens a checkout session (Universal Commerce Protocol shape) with the family's spending limit and duplicate-order check applied. Alexa+ confirms and pays; Hearth never charges anything itself. |
+| **Keeps an honest record** | Every tool call is written by the server as it happens, hash-chained, with what it read and wrote. If the assistant reports an action it never checked with Hearth first, "why did you do that?" says so. |
+| **Draws it on the screen** | Results carry an MCP Apps card (`ui://hearth/card-…`), sized for the Echo Show, and a complete spoken sentence for a speaker with no screen. |
+
+## How it is built
+
+```
+ Alexa+ (or the simulated client at /alexa)
+    │  MCP 2025-11-25 · Streamable HTTP · OAuth 2.1 + PKCE (S256)
+    ▼
+ /mcp ──► HearthMCP ──► every tools/call written to the record (SHA-256 chain)
+              │
+              ├── beliefs: who said it, when, about whom, in what situation
+              │     resolved by scope, then authority, then recency, with a reason
+              ├── care: doses · appointments · rota · rides* · family board
+              ├── checkout: /checkout-sessions (UCP shape) · pharmacy*
+              └── MCP App: resources/read ui://hearth/card-<hash>.html
+                                                    * sandbox providers
+```
+
+- **MCP spec 2025-11-25 over Streamable HTTP**, hand-rolled, 14 tools with
+  annotations, `structuredContent` on every visual result, and an
+  [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view named in
+  `_meta.ui.resourceUri` on both the tool and the result (the Alexa+ docs read
+  it from the result, the MCP Apps spec from the tool).
+- **OAuth 2.1 authorization code flow with PKCE S256**, both well-known
+  documents, and the three places Alexa+ departs from stock MCP: a `401` with
+  no `WWW-Authenticate`, both metadata documents required, bearer tokens in the
+  query string refused.
+- **No model on the read path.** Resolving what is true is a dictionary lookup,
+  so every answer fits inside the 500 ms Alexa+ allows. The server's own share
+  is stamped on each response in `Server-Timing` (under 1 ms).
+- **One household per account**, isolated, persisted to disk.
+
+## Try it
 
 ```bash
 pip install -r requirements.txt
-python3 demo.py                      # the twenty-second story, no key, no network
-python3 tests/test_contest.py        # household situations an ordinary store gets wrong
-python3 tests/test_conformance.py    # Alexa+ conformance requirements
-python3 tests/test_phrasing.py       # the house is spoken to in its own words
-uvicorn hearth.app:app --port 8000   # the MCP server
+uvicorn hearth.app:app --port 8000
+open http://localhost:8000/alexa        # the simulated Alexa+ client
 ```
 
-To reach it from Alexa+, expose it and register the add-on:
+Press **→** to play the scenes, or pick a person and type (or press Mic in
+Chrome). The right-hand panel is the live MCP traffic.
+
+**The client is a simulation, and says so on screen.** Alexa+ add-on tooling
+is available to select partners only, so it is not open to hackathon
+entrants. `/alexa` is a real MCP client standing in for it: it authorises with
+PKCE, opens an MCP session per device, lists tools, reads Hearth's MCP App and
+hosts it the way an Echo Show would, and calls tools over Streamable HTTP. What
+it cannot be is Alexa's language model: a small planner chooses which tool to
+call (a configured model, or built-in rules, named on screen), and every word
+the assistant says is the text Hearth returned.
+
+Voice: Amazon Polly neural if AWS keys are set, otherwise
+[Piper](https://github.com/rhasspy/piper) offline (`pip install -r requirements-sim.txt`,
+then set `HEARTH_PIPER_VOICE` to a voice model), otherwise the browser's voice.
+See `.env.example`.
+
+To reach it from Alexa+ once the toolkit is available to you:
 
 ```bash
 cloudflared tunnel --url http://localhost:8000
 alexa-ai new mcp --name "Hearth" --mcp-server-url https://<tunnel>/mcp
 ```
 
-Everything runs with no API key. The extraction write path uses a deterministic
-rule extractor when no model is configured, and that is what CI runs.
+## Tests
 
-## Status
+```bash
+for t in tests/test_*.py; do [ "$t" = tests/test_live.py ] || python3 $t; done
+python3 tests/test_live.py https://<deployment>    # the same checks over the network
+```
 
-Core, transport, auth and wording are done and tested. 127 tests green.
+154 tests, all green: 61 Alexa+ conformance, 21 care and record, 23 contest
+resolution, 18 phrasing, 17 extraction, 8 listing, 6 simulator. The suite has
+been mutation tested; see [docs/ENGINEERING.md](docs/ENGINEERING.md).
 
-- Beliefs with provenance, scope, context and expiry
-- Contest resolution by scope, then authority, then recency, each with a spoken reason
-- Action ledger answering "why did you do that?"
-- One server-side phrasing layer, so nothing anybody reads names a domain
-  or a slot: `thermostat.target = 19` is "The thermostat is set to 19 degrees",
-  `meals.dinner = 17:00` is "Dinner is at five", and a domain the household
-  invented this morning still gets a sentence
-- MCP 2025-11-25 over Streamable HTTP, hand-rolled, 7 tools
-- OAuth 2.1 authorization code flow with PKCE S256, both well-known documents
-- Read path: the server stamps every MCP response with `Server-Timing`, so its
-  own cost is checkable by anyone from anywhere rather than asserted here
+## What is real and what is not
 
-Three conformance details Alexa+ requires that a general-purpose MCP SDK gets
-wrong by default, each asserted in `tests/test_conformance.py`:
+- Real: the MCP server, OAuth, the record, the refusals, the resolution, the
+  MCP App, the checkout endpoints, the simulated client's MCP traffic.
+- Sandbox: the ride provider and the pharmacy. Nothing books a car or charges a
+  card. Both are named "sandbox" wherever they appear.
+- Simulated: Alexa+ itself (see above).
+- Not a medical device. Hearth enforces the rules the family gives it; it does
+  not know pharmacology. The rule extractor without a model key is a small,
+  deterministic set of patterns; `HEARTH_LLM_*` plugs in any OpenAI-compatible
+  model for the write path.
 
-1. the `401` must carry **no** `WWW-Authenticate` header, against RFC 9728 convention
-2. **both** well-known documents are required, not only the RFC 9728 one
-3. a bearer token arriving in the query string must be refused, not accepted
+## More
 
-## Live
+- [docs/SUBMISSION.md](docs/SUBMISSION.md) — the Devpost copy
+- [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) — the video, second by second
+- [docs/FRICTION_LOG.md](docs/FRICTION_LOG.md) — building for Alexa+, honestly
+- [docs/ENGINEERING.md](docs/ENGINEERING.md) — latency, the record, the bugs that shaped it
+- [skills/hearth-care/SKILL.md](skills/hearth-care/SKILL.md) — an Agent Skill that teaches any agent to use Hearth safely
 
-https://hearth-sh3u.onrender.com — console at `/console`, MCP at `/mcp`.
-
-`python3 tests/test_live.py https://hearth-sh3u.onrender.com` runs the whole
-conformance suite against the deployment, including a real OAuth 2.1 PKCE
-exchange over the wire.
-
-### Latency, measured rather than claimed
-
-Amazon requires "a round-trip query response latency of less than 500 ms."
-
-| measured from | p50 | worst |
-|---|---|---|
-| the server's own `Server-Timing` header | 0.04ms | 0.05ms |
-| a datacentre in Helsinki | 201ms | 211ms |
-| a home connection in Lagos | 329ms | 680ms |
-
-The server's contribution is four hundredths of a millisecond. Everything else
-is distance. It passes comfortably from a datacentre and fails from the author's
-home, and the second number is the irrelevant one, because Alexa+ calls from AWS
-and not from Lagos.
-
-Two earlier versions of this measurement were wrong and are worth recording. The
-first ran in-process and reported 0.8ms, which proved nothing about a network
-requirement. The second opened a fresh TCP and TLS connection per request, which
-from a distant client is two full round trips of pure handshake before the
-server sees anything, and reported 618ms. A real MCP client holds the connection
-open, which is what Streamable HTTP is for.
-
-### Cold start
-
-The deployment is on a free instance, which sleeps after 15 minutes idle. First
-byte after a sleep was 641ms, over the requirement, and that is exactly what a
-judge opening the link after a quiet night would hit. The fix is the Starter
-plan, which does not sleep. Until then `.github/workflows/keep-warm.yml` pings
-it, which is a mitigation and not a fix.
-
-### Multi-tenancy
-
-Every authenticated subject gets its own household. A single shared house was
-fine while the only client was a test and wrong the moment the service was
-reachable: two people opening the demo wrote into the same home, and the live
-deployment had already collected other people's thermostats before anyone
-noticed. In a real add-on the subject arrives from account linking, and the same
-leak would be between actual families.
-
-### The listing
-
-`addon.json` is written and validated. Six icon sizes and the carousel image are
-generated from SVG in `assets/src/` and served by the service itself, so the
-listing depends on no second host that could be down or parked during judging.
-`/privacy` and `/terms` are served from here too. Every limit Amazon imposes is
-pinned by `tests/test_manifest.py`, because each one is a silent rejection
-rather than a build error.
-
-### Before the add-on is registered, read this
-
-`HEARTH_REDIRECT_URIS` is an allowlist, and on the deployment it currently holds
-one entry: the console. That closes the open redirector, and it also means
-**any client whose callback is not on the list is refused**, which will include
-Alexa+ itself.
-
-When the add-on is registered and Amazon's callback URL is known, it has to be
-added to that variable and the service redeployed. Setting an environment
-variable through Render's API does **not** restart the process, so the value is
-read at the next deploy and not before; that cost an hour of a live service
-still handing codes to a hostile redirect after the fix was supposedly applied.
-
-Leaving the variable unset falls back to a shape check only (https, or
-loopback), which accepts any https URI. That is weaker, though PKCE means an
-attacker who captures a code cannot exchange it without the verifier. The
-allowlist is the right default and the one entry is the thing to remember.
-
-### Still to do
-
-Only `alexa-ai deploy` and the demo video, both of which need an Amazon
-developer account. The model write path also still wants a real key; it is
-exercised against a protocol stub in `tests/test_extract.py`, which proves the
-code handles a model correctly but not that a model writes good beliefs.
-
-## Built for
-Build, Ship, Shape: Amazon Developer Hackathon 2026, Alexa+ track. Deadline 23 Oct 2026.
-Derived in part from Cortex, an earlier MCP memory server by the same author; the household
-provenance, authority and action-ledger layers are new work for this event.
-
-## Licence
-MIT
+Built for Build, Ship, Shape: the Amazon Developer Hackathon 2026, Alexa+ track.
+MIT licence.
