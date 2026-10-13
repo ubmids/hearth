@@ -22,7 +22,7 @@ from .care import Care, CareBook
 from .extract import detect_context_end, extract
 from .household import Household
 from .ledger import Ledger
-from .mcp import PROTOCOL_VERSION, HearthMCP
+from .mcp import PROTOCOL_VERSION, SUPPORTED_VERSIONS, HearthMCP
 from .oauth import AuthServer
 from .store import Store
 from .trace import Trace
@@ -265,8 +265,73 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         # that adds the header "correctly" would fail Amazon's conformance check.
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
+    # --- transport security (MCP 2025-11-25, basic/transports) -------------
+    # "Servers MUST validate the Origin header on all incoming connections to
+    # prevent DNS rebinding attacks. If the Origin header is present and
+    # invalid, servers MUST respond with HTTP 403 Forbidden." Absent is fine:
+    # a server-side client (Alexa, a Lambda, the SDK) sends none. Present, it
+    # must be this service's own origin, a loopback origin, or one listed in
+    # HEARTH_ALLOWED_ORIGINS. Matching Origin against the Host header would be
+    # no defence at all, since in a rebinding attack both say evil.example.
+    issuer_origin = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(issuer))
+    allowed_origins = {issuer_origin.lower()} | {
+        o.strip().rstrip("/").lower()
+        for o in os.getenv("HEARTH_ALLOWED_ORIGINS", "").split(",") if o.strip()}
+    # Host is checked too, because a page on a rebinding domain reaching a
+    # Hearth on someone's laptop arrives with Host: evil.example. A hosted
+    # Hearth only ever sees its own name, since the platform routes by it.
+    # "testserver" is the Starlette test client's name and resolves nowhere.
+    allowed_hosts = {urllib.parse.urlsplit(issuer).hostname or "", "testserver"} | {
+        h.strip().lower() for h in os.getenv("HEARTH_ALLOWED_HOSTS", "").split(",")
+        if h.strip()}
+    loopback = {"localhost", "127.0.0.1", "::1"}
+
+    def _origin_ok(origin: str | None) -> bool:
+        if origin is None:
+            return True
+        o = origin.strip().rstrip("/").lower()
+        if o in allowed_origins or "*" in allowed_origins:
+            return True
+        host = urllib.parse.urlsplit(o).hostname or ""
+        return host in loopback
+
+    def _host_ok(host_header: str | None) -> bool:
+        if "*" in allowed_hosts or not host_header:
+            return True
+        host = urllib.parse.urlsplit("//" + host_header.strip()).hostname or ""
+        return host in loopback or host in allowed_hosts
+
+    def _forbidden(why: str):
+        return JSONResponse({"jsonrpc": "2.0", "id": None,
+                             "error": {"code": -32600, "message": f"Forbidden: {why}"}},
+                            status_code=403)
+
+    def _transport_guard(request: Request):
+        """403 for a foreign Origin or Host, 400 for a protocol version this
+        server does not speak. None when the request may proceed."""
+        if not _origin_ok(request.headers.get("origin")):
+            return _forbidden("Origin not allowed")
+        if not _host_ok(request.headers.get("host")):
+            return _forbidden("Host not allowed")
+        # "If the server receives a request with an invalid or unsupported
+        # MCP-Protocol-Version, it MUST respond with 400 Bad Request." Absent
+        # is allowed: the spec says assume 2025-03-26 for backwards
+        # compatibility, and initialize itself never carries it.
+        pv = request.headers.get("mcp-protocol-version")
+        if pv is not None and pv not in SUPPORTED_VERSIONS:
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": None,
+                 "error": {"code": -32600,
+                           "message": f"Unsupported MCP-Protocol-Version: {pv}",
+                           "data": {"supported": list(SUPPORTED_VERSIONS)}}},
+                status_code=400, headers={"MCP-Protocol-Version": PROTOCOL_VERSION})
+        return None
+
     @app.post("/mcp")
     async def mcp_endpoint(request: Request):
+        refused = _transport_guard(request)
+        if refused is not None:
+            return refused
         if "access_token" in request.query_params:
             # Bearer tokens in the query string leak through logs, referrers and
             # history. Alexa+ forbids it, so reject rather than quietly accept.
@@ -290,16 +355,22 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         headers = {"MCP-Protocol-Version": PROTOCOL_VERSION}
         sid = request.headers.get("mcp-session-id")
 
-        # A batch is a JSON array; a single call is an object. Both are valid.
         def timed(content, status=200):
             headers["Server-Timing"] = (
                 f'app;dur={(time.perf_counter() - t0) * 1000:.3f};desc="hearth"')
             return JSONResponse(content, status_code=status, headers=headers)
 
         if isinstance(payload, list):
-            out = [r for r in (server.handle(m, session=sid) for m in payload)
-                   if r is not None]
-            return timed(out) if out else timed(None, 202)
+            # JSON-RPC batching was removed from MCP in 2025-06-18, and a
+            # 2025-11-25 body is "a single JSON-RPC request, notification, or
+            # response". This used to answer batches, which a conformant
+            # client never sends and a confused one should hear about.
+            return JSONResponse({"jsonrpc": "2.0", "id": None,
+                                 "error": {"code": -32600,
+                                           "message": "Invalid Request: JSON-RPC "
+                                                      "batches are not supported "
+                                                      "in MCP 2025-11-25"}},
+                                status_code=400, headers=headers)
 
         if not isinstance(payload, dict):
             # `"hello"`, `42` and `null` are all valid JSON and none of them is
@@ -318,7 +389,17 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         if payload.get("method") == "initialize":
             sid = server.new_session()
             headers["Mcp-Session-Id"] = sid
-        elif sid and sid not in server.sessions:
+        elif not sid:
+            # Hearth issues a session on initialize, so it is a server that
+            # requires one: "Servers that require a session ID SHOULD respond
+            # to requests without an Mcp-Session-Id header (other than
+            # initialization) with HTTP 400 Bad Request."
+            return JSONResponse({"jsonrpc": "2.0", "id": payload.get("id"),
+                                 "error": {"code": -32600,
+                                           "message": "Mcp-Session-Id required: "
+                                                      "send initialize first"}},
+                                status_code=400, headers=headers)
+        elif sid not in server.sessions:
             return JSONResponse({"error": "no such session"}, status_code=404,
                                 headers=headers)
 
@@ -333,6 +414,9 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         # id. The official SDK client does this on close. Ending a session
         # forgets the transport session only; the household's memory, and the
         # record of what was called in it, stay.
+        refused = _transport_guard(request)
+        if refused is not None:
+            return refused
         caller = auth.verify(request.headers.get("authorization"))
         if caller is None:
             return _unauthorized()

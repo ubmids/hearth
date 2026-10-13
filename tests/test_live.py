@@ -133,6 +133,16 @@ def main():
 
     if tok:
         auth = {"Authorization": f"Bearer {tok}"}
+        # A session first, as any client opens one: Hearth answers a request
+        # without Mcp-Session-Id after initialize with 400, per the spec.
+        _, ih, _ = post("/mcp", {"jsonrpc": "2.0", "id": 0, "method": "initialize",
+                                 "params": {"protocolVersion": "2025-11-25",
+                                            "capabilities": {},
+                                            "clientInfo": {"name": "live-test",
+                                                           "version": "1"}}}, auth)
+        sid = {k.lower(): v for k, v in ih.items()}.get("mcp-session-id", "")
+        check("initialize issues a session id", bool(sid))
+        auth = {**auth, "Mcp-Session-Id": sid, "MCP-Protocol-Version": "2025-11-25"}
         post("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                       "params": {"name": "remember",
                                  "arguments": {"said": "keep it at 19",

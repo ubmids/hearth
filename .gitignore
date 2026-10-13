@@ -33,3 +33,5 @@ build/
 data/
 out/
 tmp/
+conformance-results/
+conformance-all/

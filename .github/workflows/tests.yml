@@ -28,3 +28,34 @@ jobs:
             python3 "$t"
             echo "::endgroup::"
           done
+
+  # The official MCP conformance suite (@modelcontextprotocol/conformance),
+  # spec 2025-11-25, run against a local Hearth through a loopback proxy that
+  # adds the bearer token (the suite has no auth option). Only the scenarios
+  # that test a server's own protocol and transport are gating; the rest need
+  # the reference server's fixture tools. See scripts/conformance.sh.
+  mcp-conformance:
+    runs-on: ubuntu-latest
+    env:
+      HEARTH_TZ: America/New_York
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -q -r requirements.txt
+      - name: Official MCP conformance, applicable scenarios
+        run: scripts/conformance.sh
+      - name: Full suite, for the record (not gating)
+        if: always()
+        run: CONFORMANCE_OUT=conformance-all scripts/conformance.sh --all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-conformance-results
+          path: |
+            conformance-results
+            conformance-all

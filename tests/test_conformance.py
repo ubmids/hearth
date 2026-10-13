@@ -31,9 +31,23 @@ def client():
     return TestClient(app), app
 
 
+def session(c, token):
+    """The session a real client would hold for this token: initialize once,
+    keep the Mcp-Session-Id. Hearth answers anything else without one 400."""
+    cache = c.__dict__.setdefault("_hearth_sessions", {})
+    if token not in cache:
+        r = c.post("/mcp", json={"jsonrpc": "2.0", "id": 0, "method": "initialize",
+                                 "params": {"protocolVersion": PROTOCOL_VERSION}},
+                   headers={"Authorization": f"Bearer {token}"})
+        cache[token] = r.headers.get("mcp-session-id")
+    return cache[token]
+
+
 def rpc(c, token, method, params=None, rpc_id=1, sid=None):
     headers = {"Authorization": f"Bearer {token}",
                "Accept": "application/json, text/event-stream"}
+    if sid is None and method != "initialize":
+        sid = session(c, token)
     if sid:
         headers["Mcp-Session-Id"] = sid
     body = {"jsonrpc": "2.0", "id": rpc_id, "method": method}
@@ -161,7 +175,8 @@ def test_notification_gets_202_and_no_body():
     c, app = client()
     tok = app.state.auth.issue_for_testing()
     r = c.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"},
-               headers={"Authorization": f"Bearer {tok}"})
+               headers={"Authorization": f"Bearer {tok}",
+                        "Mcp-Session-Id": session(c, tok)})
     assert r.status_code == 202, r.status_code
     print("PASS notification accepted with 202")
 
@@ -408,7 +423,8 @@ def test_only_the_bearer_scheme_is_accepted():
 
     # RFC 7235 makes the scheme itself case-insensitive, so this one must work.
     assert c.post("/mcp", json=body,
-                  headers={"Authorization": f"bearer {tok}"}).status_code == 200
+                  headers={"Authorization": f"bearer {tok}",
+                           "Mcp-Session-Id": session(c, tok)}).status_code == 200
     print("PASS only the Bearer scheme is accepted, case-insensitively")
 
 
@@ -681,6 +697,10 @@ def said_by(c, tok, name, **args):
     return result_of(c, tok, name, **args)["result"]["content"][0]["text"]
 
 
+def trace_of(app, tok):
+    return app.state.home_for(app.state.auth.verify(f"Bearer {tok}").subject)[2].trace
+
+
 def test_every_response_is_a_json_rpc_envelope():
     """A client matches responses to requests by id, and JSON-RPC 2.0 says both
     fields are on every response. Nothing here ever read them, so Hearth could
@@ -708,7 +728,8 @@ def test_a_message_that_is_not_json_rpc_2_is_refused():
                 {"jsonrpc": "1.0", "id": 1, "method": "ping"},
                 {"jsonrpc": "2", "id": 1, "method": "ping"}):
         got = c.post("/mcp", json=msg,
-                     headers={"Authorization": f"Bearer {tok}"}).json()
+                     headers={"Authorization": f"Bearer {tok}",
+                              "Mcp-Session-Id": session(c, tok)}).json()
         assert got["error"]["code"] == -32600, got
         assert "result" not in got, got
     print("PASS a message that is not JSON-RPC 2.0 is refused with -32600")
@@ -774,8 +795,8 @@ def test_every_tool_schema_is_one_a_model_can_actually_fill_in():
     print("PASS every tool schema is fillable and names what it cannot work without")
 
 
-def test_an_unknown_tool_and_a_missing_argument_are_invalid_params():
-    """-32602 for both. A tool name that does not exist and a call missing a
+def test_an_unknown_tool_is_invalid_params_and_a_missing_argument_is_a_tool_error():
+    """-32602 for an unknown tool, isError for a missing argument. A tool name that does not exist and a call missing a
     required argument are the two things a model actually gets wrong, and
     neither had a test, so the dispatcher could have failed the whole request
     instead of answering it."""
@@ -787,18 +808,22 @@ def test_an_unknown_tool_and_a_missing_argument_are_invalid_params():
     assert unknown["error"]["code"] == -32602, unknown
     assert "forget_everything" in unknown["error"]["message"], unknown
 
+    # A missing argument is input validation, and 2025-11-25 (SEP-1303) asks
+    # for that as a tool execution error the model can read and correct.
     missing = rpc(c, tok, "tools/call",
                   {"name": "remember",
                    "arguments": {"said": "keep it at 19"}}).json()
-    assert missing["error"]["code"] == -32602, missing
-    assert "remember" in missing["error"]["message"], missing
+    assert "error" not in missing, missing
+    assert missing["result"]["isError"] is True, missing
+    assert missing["result"]["content"][0]["text"] == (
+        "Invalid arguments for remember: missing speaker"), missing
 
     # Only what tools/list published is callable. The dispatcher finds handlers
     # by name, so this is worth pinning: an internal helper must not be one.
     private = rpc(c, tok, "tools/call",
                   {"name": "member_id", "arguments": {"name": "Dad"}}).json()
     assert private["error"]["code"] == -32602, private
-    print("PASS an unknown tool and a missing argument are both -32602")
+    print("PASS an unknown tool is -32602, a missing argument is isError")
 
 
 def test_a_tool_that_fails_reports_it_as_a_result_not_a_protocol_error():
@@ -1005,7 +1030,7 @@ def test_a_body_that_is_not_a_json_rpc_request_is_refused_not_crashed():
     """
     c, app = client()
     tok = app.state.auth.issue_for_testing()
-    head = {"Authorization": f"Bearer {tok}"}
+    head = {"Authorization": f"Bearer {tok}", "Mcp-Session-Id": session(c, tok)}
 
     broken = c.post("/mcp", content="{not json at all", headers=head)
     assert broken.status_code == 400, broken.status_code
@@ -1068,30 +1093,25 @@ def test_server_timing_reports_the_time_the_request_actually_took():
     print(f"PASS Server-Timing reports {dur:.3f}ms of a {wall_ms:.1f}ms round trip")
 
 
-def test_a_batch_is_answered_as_a_batch():
-    """JSON-RPC allows an array, Alexa+ may send one, and nothing had ever sent
-    one. The notification filter inside it is the part that matters: a
-    notification must not produce a response object, and a batch that is nothing
-    but notifications must answer 202 with no body at all.
-    """
+def test_a_batch_is_refused():
+    """JSON-RPC batching was removed from MCP in 2025-06-18, and a 2025-11-25
+    POST body is a single message. Hearth used to answer batches ("both are
+    valid"); the official conformance suite and the spec say otherwise, so a
+    batch is now an Invalid Request and nothing inside it runs."""
     c, app = client()
     tok = app.state.auth.issue_for_testing()
-    head = {"Authorization": f"Bearer {tok}",
+    head = {"Authorization": f"Bearer {tok}", "Mcp-Session-Id": session(c, tok),
             "Accept": "application/json, text/event-stream"}
-
+    before = len(trace_of(app, tok).entries)
     r = c.post("/mcp", json=[{"jsonrpc": "2.0", "id": 1, "method": "ping"},
-                             {"jsonrpc": "2.0", "method": "notifications/ready"},
-                             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}],
+                             {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                              "params": {"name": "household", "arguments": {}}}],
                headers=head)
-    assert r.status_code == 200, r.status_code
-    out = r.json()
-    assert [x["id"] for x in out] == [1, 2], out
-    assert "tools" in out[1]["result"], out[1]
-
-    quiet = c.post("/mcp", json=[{"jsonrpc": "2.0", "method": "notifications/ready"}],
-                   headers=head)
-    assert quiet.status_code == 202, quiet.status_code
-    print("PASS a batch is answered as a batch, and notifications stay silent")
+    assert r.status_code == 400, r.status_code
+    assert r.json()["error"]["code"] == -32600, r.json()
+    assert "batch" in r.json()["error"]["message"], r.json()
+    assert len(trace_of(app, tok).entries) == before, "a call inside the batch ran"
+    print("PASS a JSON-RPC batch is refused with -32600 and nothing in it runs")
 
 
 def test_console_tokens_are_never_handed_to_a_remote_caller():
@@ -1560,6 +1580,133 @@ def test_delete_ends_a_session_and_nothing_else():
     assert c.delete("/mcp", headers={"Authorization": f"Bearer {tok}"}).status_code == 400
     assert [e.tool for e in app.state.home_for("household")[2].trace.entries] == ["whats_true"]
     print("PASS DELETE ends a session, and only the session")
+
+
+# --- MCP 2025-11-25 transport rules the official conformance suite checks ----
+# Each of these failed against first-place@4fcf406 (red-team audit 028, #7).
+
+def init_headers(tok, **extra):
+    return {"Authorization": f"Bearer {tok}",
+            "Accept": "application/json, text/event-stream", **extra}
+
+
+INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2025-11-25", "capabilities": {},
+                   "clientInfo": {"name": "t", "version": "1"}}}
+
+
+def test_a_foreign_origin_is_refused_with_403():
+    """Transports: "If the Origin header is present and invalid, servers MUST
+    respond with HTTP 403 Forbidden." Before: 200 for http://evil.example.com."""
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    bad = c.post("/mcp", json=INIT,
+                 headers=init_headers(tok, Origin="http://evil.example.com"))
+    assert bad.status_code == 403, bad.status_code
+    assert bad.json()["error"]["message"] == "Forbidden: Origin not allowed", bad.text
+    assert "mcp-session-id" not in bad.headers, "a refused request opened a session"
+    # The service's own origin, loopback, and no Origin at all still work.
+    for origin in (ISSUER, "http://localhost:8000", "http://127.0.0.1:5555", None):
+        h = init_headers(tok, **({"Origin": origin} if origin else {}))
+        r = c.post("/mcp", json=INIT, headers=h)
+        assert r.status_code == 200, (origin, r.status_code)
+    # DELETE is guarded the same way.
+    assert c.delete("/mcp", headers=init_headers(
+        tok, Origin="http://evil.example.com")).status_code == 403
+    print("PASS a foreign Origin is 403; own, loopback and absent are served")
+
+
+def test_a_rebinding_host_is_refused_and_listed_origins_are_honoured():
+    """The official dns-rebinding-protection scenario sends Host and Origin
+    both set to evil.example.com. Matching one against the other would let it
+    through, so both are checked against what this service is called."""
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    r = c.post("/mcp", json=INIT, headers=init_headers(tok, Host="evil.example.com"))
+    assert r.status_code == 403, r.status_code
+    assert c.post("/mcp", json=INIT, headers=init_headers(
+        tok, Host="127.0.0.1:8765", Origin="http://127.0.0.1:8765")).status_code == 200
+    assert c.post("/mcp", json=INIT, headers=init_headers(
+        tok, Host="hearth.test")).status_code == 200
+
+    os.environ["HEARTH_ALLOWED_ORIGINS"] = "https://console.example.org"
+    try:
+        c2, app2 = client()
+        tok2 = app2.state.auth.issue_for_testing()
+        assert c2.post("/mcp", json=INIT, headers=init_headers(
+            tok2, Origin="https://console.example.org")).status_code == 200
+        assert c2.post("/mcp", json=INIT, headers=init_headers(
+            tok2, Origin="https://other.example.org")).status_code == 403
+    finally:
+        del os.environ["HEARTH_ALLOWED_ORIGINS"]
+    print("PASS a rebinding Host is 403, and HEARTH_ALLOWED_ORIGINS is honoured")
+
+
+def test_an_unsupported_protocol_version_header_is_400():
+    """Transports: an invalid or unsupported MCP-Protocol-Version "MUST" get
+    400 Bad Request. Before: 1999-01-01 was answered 200 {"result": {}}."""
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    sid = session(c, tok)
+    r = c.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "ping"},
+               headers=init_headers(tok, **{"Mcp-Session-Id": sid,
+                                            "MCP-Protocol-Version": "1999-01-01"}))
+    assert r.status_code == 400, r.status_code
+    assert "1999-01-01" in r.json()["error"]["message"], r.text
+    for good in ("2025-11-25", "2025-06-18", "2025-03-26"):
+        ok = c.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "ping"},
+                    headers=init_headers(tok, **{"Mcp-Session-Id": sid,
+                                                 "MCP-Protocol-Version": good}))
+        assert ok.status_code == 200 and ok.json()["result"] == {}, (good, ok.text)
+    # initialize echoes a version it speaks and offers the latest otherwise.
+    old = rpc(c, tok, "initialize", {"protocolVersion": "2025-06-18"}).json()
+    assert old["result"]["protocolVersion"] == "2025-06-18", old
+    odd = rpc(c, tok, "initialize", {"protocolVersion": "2024-01-01"}).json()
+    assert odd["result"]["protocolVersion"] == PROTOCOL_VERSION, odd
+    print("PASS an unsupported MCP-Protocol-Version is 400; supported ones pass")
+
+
+def test_a_request_without_a_session_after_initialize_is_400():
+    """Hearth issues Mcp-Session-Id on initialize, so it requires one; the spec
+    says such a server SHOULD answer a request without it with 400. Before:
+    ping with no session id was 200."""
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    session(c, tok)
+    before = len(trace_of(app, tok).entries)
+    for method in ("ping", "tools/list", "tools/call"):
+        r = c.post("/mcp", json={"jsonrpc": "2.0", "id": 9, "method": method,
+                                 "params": {"name": "household", "arguments": {}}},
+                   headers=init_headers(tok))
+        assert r.status_code == 400, (method, r.status_code)
+        assert r.json()["id"] == 9 and "Mcp-Session-Id" in r.json()["error"]["message"]
+    assert len(trace_of(app, tok).entries) == before
+    print("PASS no session id after initialize is 400, and nothing runs")
+
+
+def test_bad_arguments_are_a_tool_error_that_leaks_no_python():
+    """2025-11-25 (SEP-1303): input validation failures are tool results with
+    isError. Before: -32602 "HearthMCP._tool_give_dose() got an unexpected
+    keyword argument 'bogus'"."""
+    c, app = client()
+    tok = app.state.auth.issue_for_testing()
+    got = result_of(c, tok, "give_dose", medication="warfarin", given_by="Rose",
+                    bogus=1)
+    assert "error" not in got, got
+    text = got["result"]["content"][0]["text"]
+    assert got["result"]["isError"] is True, got
+    assert text == ("Invalid arguments for give_dose: unexpected bogus; this tool "
+                    "takes medication, given_by, person"), text
+    for leak in ("HearthMCP", "_tool_", "keyword argument", "Traceback"):
+        assert leak not in text, text
+    typed = result_of(c, tok, "record", limit=[1])["result"]
+    assert typed["isError"], typed
+    assert typed["content"][0]["text"].endswith("limit must be an integer"), typed
+    assert result_of(c, tok, "record", limit="3")["result"]["isError"] is False
+    # Still on the record, as every call is.
+    trace = trace_of(app, tok)
+    assert [e.outcome for e in trace.entries[-3:]] == ["error", "error", "ok"]
+    print("PASS bad arguments come back as isError in plain words")
 
 
 if __name__ == "__main__":

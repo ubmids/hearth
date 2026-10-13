@@ -20,6 +20,12 @@ from . import care as carelib
 from . import phrasing
 
 PROTOCOL_VERSION = "2025-11-25"
+# What an MCP-Protocol-Version header may say, and what initialize will echo.
+# 2025-11-25 is what Alexa+ asks for and what is offered by default. The two
+# earlier dated versions are accepted because a server that gets no header at
+# all must already assume 2025-03-26, and nothing Hearth serves differs between
+# them for a client that negotiated one. Anything else is a 400.
+SUPPORTED_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SERVER_INFO = {"name": "hearth", "version": "0.1.0",
                "title": "Hearth household memory"}
 
@@ -277,6 +283,36 @@ for _t in TOOLS:
     _t["annotations"] = {"title": _t["title"], **_ANNOTATE[_t["name"]]}
     if _t["name"] in _VISUAL:
         _t["_meta"] = _UI
+_BY_NAME = {t["name"]: t for t in TOOLS}
+
+_TYPES = {"string": (str,), "integer": (int,), "object": (dict,),
+          "boolean": (bool,), "number": (int, float)}
+
+
+def _invalid_args(tool, args) -> str | None:
+    """What is wrong with these arguments against the published schema, said
+    so a model can fix the call, or None. Only what tools/list declares is
+    checked: required names, unknown names, and the JSON type of each value."""
+    if not isinstance(args, dict):
+        return "arguments must be an object"
+    schema = tool["inputSchema"]
+    props = schema.get("properties", {})
+    missing = [k for k in schema.get("required", []) if k not in args]
+    if missing:
+        return "missing " + ", ".join(missing)
+    unknown = sorted(k for k in args if k not in props)
+    if unknown:
+        return (f"unexpected {', '.join(unknown)}; this tool takes "
+                + (", ".join(props) or "no arguments"))
+    for k, v in args.items():
+        want = props[k].get("type")
+        ok = _TYPES.get(want)
+        if want == "integer" and isinstance(v, str) and v.strip().isdigit():
+            continue                  # "8" from a model that quoted a number
+        if v is not None and ok and (not isinstance(v, ok)
+                                     or (want == "integer" and isinstance(v, bool))):
+            return f"{k} must be {'an' if want[0] in 'aeiou' else 'a'} {want}"
+    return None
 
 
 class HearthMCP:
@@ -362,8 +398,12 @@ class HearthMCP:
         if method and method.startswith("notifications/"):
             return None                       # notifications get no response body
         if method == "initialize":
+            # Echo the client's version when it is one Hearth speaks, else
+            # offer the latest, as the lifecycle section of the spec asks.
+            asked = params.get("protocolVersion")
             return _ok(rpc_id, {
-                "protocolVersion": PROTOCOL_VERSION,
+                "protocolVersion": (asked if asked in SUPPORTED_VERSIONS
+                                    else PROTOCOL_VERSION),
                 "capabilities": {"tools": {"listChanged": False},
                                  "resources": {"listChanged": False}},
                 "serverInfo": SERVER_INFO,
@@ -399,13 +439,22 @@ class HearthMCP:
         if method == "tools/call":
             name = params.get("name")
             args = params.get("arguments") or {}
-            fn = getattr(self, f"_tool_{name}", None)
-            if fn is None:
+            tool = _BY_NAME.get(name)
+            if tool is None:
                 return _err(rpc_id, -32602, f"Unknown tool: {name}")
+            # 2025-11-25 (SEP-1303): input validation errors are tool execution
+            # errors, returned as a result with isError, so the model sees them
+            # and can correct itself. This used to be a -32602 carrying Python's
+            # own TypeError text, signature and all.
+            problem = _invalid_args(tool, args)
+            if problem:
+                return _ok(rpc_id, {
+                    "content": [{"type": "text",
+                                 "text": f"Invalid arguments for {name}: {problem}"}],
+                    "isError": True})
+            fn = getattr(self, f"_tool_{name}")
             try:
                 return _ok(rpc_id, fn(**args))
-            except TypeError as e:
-                return _err(rpc_id, -32602, f"Invalid arguments for {name}: {e}")
             except Exception as e:                       # tool errors are results,
                 return _ok(rpc_id, {                     # not protocol errors
                     "content": [{"type": "text", "text": f"Hearth could not do that: {e}"}],
