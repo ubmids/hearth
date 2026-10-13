@@ -42,7 +42,10 @@ next step and is not built.
 
 ## Live
 
-https://hearth-sh3u.onrender.com — console at `/console`, MCP at `/mcp`.
+https://hearth-sh3u.onrender.com, console at `/console`, simulated client at
+`/alexa`, MCP at `/mcp`. **Currently down:** the Render workspace is suspended
+for billing, and the deployed build predates the care household. Run it
+locally (README, "Try it") until it is restored.
 
 `python3 tests/test_live.py https://hearth-sh3u.onrender.com` runs the whole
 conformance suite against the deployment, including a real OAuth 2.1 PKCE
