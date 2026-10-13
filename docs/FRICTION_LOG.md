@@ -211,15 +211,25 @@ them from the example.
 **Severity: medium.** A developer who copies the example ships the wrong
 version string, and the version is the one thing Stage One checks.
 
+**Task attempted.** Implement `initialize` so that Hearth negotiates the
+protocol version Alexa+ requires, using the Alexa+ client lifecycle page as the
+reference for what Alexa+ sends and expects back.
+
 **Steps taken.** Compared the client lifecycle page's example exchange with the
 requirement on the quickstart and in the hackathon rules.
+
+**Expected.** An example exchange that negotiates the version the same docs
+require, 2025-11-25, so it could be copied as a test fixture.
 
 **Actual.** The example's `initialize` shows `"protocolVersion": "2025-03-26"`
 (twice), the release in which Streamable HTTP was introduced, while the
 quickstart and the rules require 2025-11-25.
 
-**Workaround.** Hearth answers `2025-11-25` on `initialize` and in the
-`MCP-Protocol-Version` header, asserted in `tests/test_conformance.py`.
+**Workaround.** Hearth offers `2025-11-25` on `initialize` and in the
+`MCP-Protocol-Version` header, echoes an earlier dated version only when a
+client asks for one (the spec's negotiation rule), and answers an unsupported
+`MCP-Protocol-Version` header with 400. Asserted in `tests/test_conformance.py`
+and by the official conformance suite (`scripts/conformance.sh`).
 
 **Suggestion.** Update the example to 2025-11-25, and say what Alexa+ does when
 a server answers with an older version (refuse, or downgrade).
@@ -292,10 +302,19 @@ voice-only trigger.
 
 **Severity: low to medium.**
 
+**Task attempted.** Make Alexa+ confirm before Hearth's consequential tools run
+(`give_dose`, `arrange`, `reorder`, `stand_down`), using the standard MCP tool
+annotations rather than a private convention.
+
 **Steps taken.** The functional requirements say to "require explicit
 confirmation with key details before any high-consequence action" and to
 "detect and prevent duplicate transactions". MCP 2025-11-25 already has
 `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`.
+Searched the add-on docs for any of the four names, or for "annotation".
+
+**Expected.** One sentence saying that Alexa+ reads the MCP annotations, and
+which of them (for example `destructiveHint: true` or `openWorldHint: true`)
+make it ask the customer to confirm before calling the tool.
 
 **Actual.** The add-on docs never mention the annotations, so it is unclear
 whether Alexa+ uses them to decide when to confirm, or ignores them.
