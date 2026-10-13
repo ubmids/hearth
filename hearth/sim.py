@@ -30,7 +30,14 @@ import wave
 from .care import MED_ALIASES
 
 # --- planning ---------------------------------------------------------------
-MEDS = r"(warfarin|blood thinners?|tablets?|pills?|medicines?|medication|metformin|furosemide|metoprolol|water pills?|heart pills?|dose)"
+# Medicines by name, brand and kitchen word. Brands matter: a person reaching
+# for the box says "my Coumadin", and that used to fall through to `remember`
+# ("Nothing durable to remember in that"), so the refusal never ran.
+NAMED_MEDS = (r"warfarin|coumadin|jantoven|metformin|furosemide|lasix|metoprolol|"
+              r"lisinopril|atorvastatin|amlodipine|aspirin|paracetamol|tylenol|"
+              r"ibuprofen|advil|insulin|vitamin \w+")
+MEDS = (r"(" + NAMED_MEDS + r"|blood thinners?|tablets?|pills?|medicines?|"
+        r"medication|water pills?|heart pills?|dose)")
 ITEMS = r"(warfarin|blood thinners?|ensure|pill organi[sz]er|furosemide|metformin|metoprolol|tablets|pills)"
 APPTS = r"(cardiology|cardiologist|dentist|doctor|podiatrist|eye clinic|appointment|check-?up|physio\w*|hospital)"
 
@@ -40,7 +47,9 @@ def _med(text: str) -> str:
     for alias, med in MED_ALIASES.items():
         if alias in low:
             return med
-    m = re.search(r"\b(warfarin|metformin|furosemide|metoprolol)\b", low)
+    m = re.search(r"\b(" + NAMED_MEDS + r")\b", low)
+    # Said as it was said: Hearth normalises the name, and a medicine it has
+    # no rule for gets "check with Ada", not a guess at which one it was.
     return m.group(1) if m else "warfarin"
 
 
@@ -69,7 +78,7 @@ def plan_rules(said: str, speaker: str, context: dict | None = None) -> list[dic
     if re.search(r"\b(has|did|have)\b.*\b(had|taken|take|got)\b", low) and re.search(MEDS, low):
         return [{"name": "check_dose", "arguments": {"medication": _med(low),
                                                       "asked_by": speaker}}]
-    if (re.search(r"\b(take|taking|took|give|giving|gave|have|having)\b", low)
+    if (re.search(r"\b(take|taking|took|give|giving|gave|have|having|time for)\b", low)
             and re.search(MEDS, low) and not re.search(r"\ba day\b|\bdaily\b", low)):
         return [{"name": "give_dose", "arguments": {"medication": _med(low),
                                                      "given_by": speaker}}]

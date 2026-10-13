@@ -191,6 +191,25 @@ def test_the_simulator_endpoints_are_behind_the_bearer_and_say_what_they_are():
     print("PASS simulator endpoints are protected and the page says it is a simulation")
 
 
+def test_the_hero_line_survives_the_ways_people_actually_say_it():
+    """Audit 028 #17. "Time for my warfarin" and "I'll have my Coumadin now"
+    went to `remember` ("Nothing durable to remember in that"), so a judge who
+    typed a variant never saw the refusal."""
+    for said, med in (("Alexa, time for my warfarin", "warfarin"),
+                      ("Alexa, I'll have my Coumadin now", "warfarin"),
+                      ("I'm taking my Jantoven", "warfarin"),
+                      ("Alexa, I'm just going to take my blood thinner.", "warfarin"),
+                      ("I'm taking my vitamin D", "vitamin d")):
+        p = sim.plan_rules(said, "Rose")[0]
+        assert p == {"name": "give_dose", "arguments": {"medication": med,
+                                                        "given_by": "Rose"}}, (said, p)
+    for said, tool in (("Mom finished the antibiotics.", "remember"),
+                       ("I'll have my coffee now", "remember"),
+                       ("Mom takes one warfarin a day", "remember")):
+        assert sim.plan_rules(said, "Ada")[0]["name"] == tool, said
+    print("PASS the refusal is reached however the dose is announced")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
