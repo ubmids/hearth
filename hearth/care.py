@@ -375,8 +375,8 @@ class Care:
         # 5. the family board
         everyone = [m.name for m in self.h.members.values()
                     if m.id != pid and m.name != asker]
-        text = (f"{her}'s {appt['what']}: {local(at).strftime('%A')} "
-                f"{clock(at)}. Ride at {clock(ride['pickup'])}."
+        text = (f"{her}'s {appt['what']} is now {local(at).strftime('%A')} at "
+                f"{clock(at)}, with a ride at {clock(ride['pickup'])}."
                 + (f" {escort} is taking {her}." if escort else
                    " Nobody is taking her yet."))
         self.book.post(text, to=everyone, by=asker, now=now)
@@ -606,7 +606,11 @@ class Care:
         for p in self.book.board:
             if p["at"] > since and (not me or me.name in p["to"]):
                 items.append({"at": p["at"], "kind": "board", "outcome": "done",
-                              "line": f"From {p['by']}: {p['text']}"})
+                              # Said aloud, "From Grace: Mom slept well" after
+                              # "since Sunday:" is a colon too many; a post that
+                              # already names its author needs no attribution.
+                              "line": p["text"] if p["text"].startswith(p["by"] + " ")
+                              else f"A note from {p['by']}. {p['text']}"})
         for b in self.h.beliefs:
             if b.stated_at > since and not (me and b.holder == me.id):
                 items.append({"at": b.stated_at, "kind": "rule", "outcome": "done",

@@ -380,7 +380,8 @@ def test_catch_up_tells_a_sibling_what_happened_since_they_last_asked():
     assert reply.startswith("Since you last checked in"), reply
     assert "Mom went to take a second warfarin and I stopped her" in reply, reply
     assert "Tom is taking Mom" in reply, reply
-    assert "Mom slept well" in reply, reply
+    assert "A note from Grace. Mom slept well" in reply, reply
+    assert "From " not in reply and ": " not in reply, reply
     # Asking again straight away: nothing new, because Hearth remembers he asked.
     again = house.say("catch_up", person="Tom")
     assert again.startswith("Nothing new since you last checked in"), again

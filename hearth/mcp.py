@@ -768,7 +768,7 @@ class HearthMCP:
         if not items:
             line = f"Nothing new since you last checked in, {when}."
         else:
-            line = (f"Since you last checked in, {when}: "
+            line = (f"Since you last checked in, {when}, here's what's new. "
                     + " ".join(i["line"] for i in items))
         return _text(line, {
             "pattern": "list", "tone": "info", "eyebrow": f"For {name}",
