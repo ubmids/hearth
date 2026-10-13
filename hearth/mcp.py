@@ -733,7 +733,14 @@ class HearthMCP:
                 "body": price + " · delivered tomorrow",
                 "items": [{"label": m["type"].title(), "detail": m["content"],
                            "status": "lost" if m["type"] == "error" else "info"}
-                          for m in q["messages"]]}
+                          for m in q["messages"]]
+                         + [{"label": "Checked", "detail": c, "status": "done"}
+                            for c in q.get("checks", [])]
+                         + ([] if errors else [{
+                             "label": "Paid through Alexa+",
+                             "detail": "Voice PIN and the card on the account. "
+                                       "Hearth never charges it.",
+                             "status": "info"}])}
         # What Alexa+ needs to open the checkout itself when the customer says
         # yes or taps Pay: the line items, by catalogue id, and the quote they
         # came from. The price is not passed; the merchant owns it.

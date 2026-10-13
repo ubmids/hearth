@@ -453,10 +453,20 @@ class Care:
         total = entry["price"] * quantity
         messages, limit_r = self._house_rules(entry, quantity, asked_by, now)
         approved = not any(m["type"] == "error" for m in messages)
+        # What was checked and passed, so a screen can show the family the
+        # rules held, not only when they fail.
+        codes = {m["code"] for m in messages}
+        checks = []
+        if limit_r.winner and "requires_approval" not in codes:
+            checks.append(f"Within {self.h.name_of(limit_r.winner.holder)}'s "
+                          f"${str(limit_r.winner.value).lstrip('$')} limit")
+        if "possible_duplicate" not in codes:
+            checks.append("Not ordered in the last week")
         quote = {"id": _id("q"), "sku": entry["id"], "title": entry["title"],
                  "quantity": quantity, "price": entry["price"], "total": total,
                  "asked_by": asker, "for": who.id if who else None,
-                 "approved": approved, "messages": messages, "at": now}
+                 "approved": approved, "messages": messages, "checks": checks,
+                 "at": now}
         self.book.quotes.append(quote)
         self.book.save()
         self.ledger.record(

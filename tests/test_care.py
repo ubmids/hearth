@@ -305,6 +305,23 @@ def test_a_refill_is_priced_by_the_tool_and_paid_through_checkout():
     print("PASS a refill is priced by the tool and paid through checkout")
 
 
+def test_a_refill_card_shows_the_rules_that_held():
+    # The screen shows what was checked and passed, not only what failed.
+    house = House()
+    card = house.call("reorder", item="warfarin", asked_by="Grace")["structuredContent"]["card"]
+    checked = [i["detail"] for i in card["items"] if i["label"] == "Checked"]
+    assert checked == ["Within Ada's $50 limit",
+                       "Not ordered in the last week"], checked
+    assert card["items"][-1]["label"] == "Paid through Alexa+"
+    # Over the limit: no "within the limit", and no payment line either.
+    over = house.call("reorder", item="ensure", asked_by="Tom", quantity=2)
+    labels = [(i["label"], i["detail"]) for i in over["structuredContent"]["card"]["items"]]
+    assert ("Error", over["structuredContent"]["card"]["items"][0]["detail"]) == labels[0]
+    assert not any("Within" in d for _, d in labels), labels
+    assert not any(l == "Paid through Alexa+" for l, _ in labels), labels
+    print("PASS a refill card shows the rules that held")
+
+
 def test_spending_over_the_limit_needs_the_person_who_set_it():
     house = House()
     r = house.call("reorder", item="ensure", asked_by="Tom", quantity=2)
