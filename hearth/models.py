@@ -108,7 +108,10 @@ class Belief:
     context: str | None = None
     expires_at: float | None = None
 
-    status: str = "active"                     # active | superseded | expired
+    # active | superseded | expired | proposed. A proposal is a medication
+    # rule from somebody without the say over it: kept, never live, until the
+    # holder settles it (see HearthMCP._propose).
+    status: str = "active"
     superseded_by: str | None = None
     ended_reason: str = ""
     audit: list = field(default_factory=list)

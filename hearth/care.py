@@ -74,16 +74,44 @@ def _id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:10]}"
 
 
-def med_name(text: str) -> str:
-    t = re.sub(r"\b(my|her|his|mum's|mom's|the|a|an|tablets?|pills?|dose)\b", " ",
-               str(text or "").lower())
-    t = re.sub(r"\s+", " ", t).strip()
+_STRENGTH = re.compile(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|g|ml|iu|units?)\b")
+_FILLER = re.compile(r"\b(my|her|his|your|mum's|mom's|the|a|an|tablets?|pills?|"
+                     r"capsules?|dose|doses|some|of)\b")
+
+
+def med_name(text: str, known=()) -> str:
+    """What a medicine is called in the household's rules, from what was said.
+
+    By containment, not equality: "warfarin sodium" (the name on the bottle),
+    "Jantoven 5mg tablet" and "her blood thinner" all have to land on
+    `warfarin`, because a dose logged under any other name is a dose the
+    daily limit never sees. That was a real hole (red-team audit 028, #6):
+    "warfarin sodium" was logged as a new medicine with no rule and the second
+    dose of the day went through.
+
+    `known` adds the medicines this household has rules for.
+    """
+    raw = str(text or "").lower()
+    t = _FILLER.sub(" ", _STRENGTH.sub(" ", raw))
+    t = re.sub(r"\s+", " ", t).strip(" .,!?")
     if t in MED_ALIASES:
         return MED_ALIASES[t]
-    for alias, med in MED_ALIASES.items():
-        if alias in str(text).lower():
-            return med
+    names = {m: m for m in set(MED_ALIASES.values()) | set(known)
+             | {k for k, v in CATALOG.items() if v["rx"]}}
+    names.update(MED_ALIASES)
+    # Longest first, so "blood thinners" wins over "blood thinner" and a
+    # household rule for "metoprolol succinate" over plain "metoprolol".
+    for alias in sorted(names, key=len, reverse=True):
+        if re.search(r"(?<![\w])" + re.escape(alias.replace("_", " ")) + r"(?![\w])",
+                     raw.replace("_", " ")):
+            return names[alias]
     return t.replace(" ", "_")
+
+
+def med_spoken(med: str) -> str:
+    """`vitamin_d` is a key; "vitamin D" is what a person hears."""
+    words = med.replace("_", " ").split()
+    return " ".join(w.upper() if len(w) == 1 else w for w in words)
 
 
 # --- saying times the way a person would ------------------------------------
@@ -172,9 +200,19 @@ class CareBook:
         if self.store:
             self.store.save_aux("care", {k: getattr(self, k) for k in self.KINDS})
 
-    def post(self, text, *, to=None, by=None, now=None) -> dict:
-        p = {"id": _id("note"), "at": now or time.time(), "to": list(to or []),
+    def post(self, text, *, to=None, by=None, now=None, pin_for=None,
+             about=None) -> dict:
+        """`pin_for` seconds keeps a post in front of its readers on every
+        catch-up until then, not only the first: used for the notes Hearth
+        writes to a medication holder, which must not be missed because
+        somebody using the holder's name has spoken since."""
+        at = now or time.time()
+        p = {"id": _id("note"), "at": at, "to": list(to or []),
              "by": by, "text": text}
+        if pin_for:
+            p["pin_until"] = at + pin_for
+        if about:
+            p["about"] = about
         self.board.append(p)
         return p
 
@@ -198,6 +236,17 @@ class Care:
                 return self.h.members.get(b.scope)
         return None
 
+    def known_meds(self) -> set:
+        """Every medicine this household has a rule for."""
+        return {b.domain.partition(".")[2] for b in self.h.beliefs
+                if b.domain.startswith("medication.")}
+
+    def say_holder(self, domain):
+        """The member with the say over this domain by explicit grant, if any.
+        For medication that is the health care proxy, in the demo Ada."""
+        return next((m for m in self.h.members.values()
+                     if m.authority_over(domain) >= 100), None)
+
     def _name(self, name):
         m = self.h.member_named(name) if name else None
         return m.name if m else (str(name).strip().title() if name else "someone")
@@ -205,7 +254,7 @@ class Care:
     # --- doses ------------------------------------------------------------
     def dose_status(self, medication, person=None, now=None) -> dict:
         now = now or time.time()
-        med = med_name(medication)
+        med = med_name(medication, self.known_meds())
         who = self.person(person)
         pid = who.id if who else None
         domain = f"medication.{med}"
@@ -604,7 +653,8 @@ class Care:
                                       f"{self._name_id(d['person'])} her "
                                       f"{d['medication']} {when_said(d['at'], now)}."})
         for p in self.book.board:
-            if p["at"] > since and (not me or me.name in p["to"]):
+            fresh = p["at"] > since or p.get("pin_until", 0) > now
+            if fresh and (not me or me.name in p["to"]):
                 items.append({"at": p["at"], "kind": "board", "outcome": "done",
                               # Said aloud, "From Grace: Mom slept well" after
                               # "since Sunday:" is a colon too many; a post that

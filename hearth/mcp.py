@@ -92,7 +92,9 @@ TOOLS = [
         "title": "Remember what someone said",
         "description": ("Record a household preference, rule or decision, attributed to "
                         "the person who said it. Use whenever someone states how they "
-                        "want something to be, even in passing."),
+                        "want something to be, even in passing. A medication rule from "
+                        "someone without the say over it is filed as a proposal for the "
+                        "holder to confirm; say Hearth's answer as given."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -284,6 +286,10 @@ for _t in TOOLS:
     if _t["name"] in _VISUAL:
         _t["_meta"] = _UI
 _BY_NAME = {t["name"]: t for t in TOOLS}
+
+# Domains where a rule from somebody without the say over it is a proposal,
+# not a rule: it is filed, read back as pending, and waits for the holder.
+PROPOSE_DOMAINS = ("medication",)
 
 _TYPES = {"string": (str,), "integer": (int,), "object": (dict,),
           "boolean": (bool,), "number": (int, float)}
@@ -503,7 +509,7 @@ class HearthMCP:
         # what a person hears. The sentence is the answer; the id is metadata a
         # model needs only to stand a belief down later, so it goes at the end
         # where it reads as a reference rather than part of the reply.
-        out = []
+        out, held, settled = [], [], []
         cared = self.care.person()
         for b in found:
             value = str(b["value"]).replace("{speaker}", self.h.name_of(holder))
@@ -513,19 +519,113 @@ class HearthMCP:
                 # In a care household a rule about medicine or diet with no
                 # name in it is about the person being cared for.
                 scope = cared.id
+            say = self.care.say_holder(b["domain"]) if b["domain"].split(".")[0] \
+                in PROPOSE_DOMAINS else None
+            speaker_m = self.h.members.get(holder)
+            if say and speaker_m and speaker_m.authority_over(b["domain"]) < 100:
+                held.append(self._propose(holder, say, b, value, said, scope))
+                continue
+            before = self.h.resolve(b["domain"], b["slot"], for_member=scope).winner \
+                if say else None
             belief = self.h.assert_belief(
                 holder, b["domain"], b["slot"], value, content=said,
                 scope=scope, context=b.get("context"))
+            if say:
+                settled += self._settle_proposals(belief)
+                if before is None or before.value != value:
+                    self._tell_holders(belief, scope)
             b = {**b, "value": value}
             about = self.h.name_of(belief.scope) if belief.scope else None
             line = phrasing.statement(b["domain"], b["slot"], b["value"], about)
             if belief.context:
                 line += f" That holds only while {belief.context} lasts."
             out.append(f"{line} [{belief.id}]")
-        # Possessed through phrasing, so the text Alexa+ is handed and the line
-        # the console shows cannot disagree about somebody's name.
-        return _text(f"Noted, on {phrasing.possessive(speaker)} word. "
-                     + " ".join(out))
+        reply = []
+        if out:
+            # Possessed through phrasing, so the text Alexa+ is handed and the
+            # line the console shows cannot disagree about somebody's name.
+            reply.append(f"Noted, on {phrasing.possessive(speaker)} word. "
+                         + " ".join(out))
+            reply += settled
+        if held:
+            reply.append((f"Noted, {speaker}. " if not out else "") + " ".join(held))
+        return _text(" ".join(reply))
+
+    def _propose(self, holder, say, b, value, said, scope):
+        """A medication rule from somebody without the say over it.
+
+        It used to be stored and then spoken back as fact: Tom says "Mom's
+        warfarin is twice a day" and hears "Noted, on Tom's word. Mom's
+        warfarin is twice a day", while the house, correctly, kept once a day
+        on Ada's authority. The person in the kitchen heard the opposite of
+        what Hearth would enforce. Now it is filed as a proposal, which never
+        takes effect on its own, the reply says what still stands and who
+        decides, and the holder hears about it on the family board."""
+        belief = self.h.assert_belief(holder, b["domain"], b["slot"], value,
+                                      content=said, scope=scope,
+                                      context=b.get("context"))
+        belief.status = "proposed"
+        belief.ended_reason = f"waiting for {say.name} to confirm"
+        self.h._audit(belief, "proposed", needs=say.id)
+        self.h._persist()
+        about = self.h.name_of(scope) if scope else None
+        subject = phrasing.subject(b["domain"], b["slot"], about)
+        now = self.h.resolve(b["domain"], b["slot"], for_member=scope)
+        stays = (f"so it stays {phrasing.spoken(b['domain'], b['slot'], now.winner.value)}"
+                 if now.winner else "so nothing changes")
+        who = self.h.name_of(holder)
+        self.care.book.post(
+            f"{who} asked to change {subject} to "
+            f"{phrasing.spoken(b['domain'], b['slot'], value)}. It needs "
+            f"{say.name} to confirm before it applies.",
+            to=[say.name], by=who, now=self._now, pin_for=2 * 86400,
+            about=belief.id)
+        self.care.book.save()
+        return (f"{say.name} has the say over {subject}, {stays} until "
+                f"{say.name} confirms. I've asked {say.name}. [{belief.id}]")
+
+    def _tell_holders(self, belief, scope):
+        """A medication rule changed on a holder's word goes on the board to
+        every holder. Hearth cannot hear who is speaking; a name is whatever
+        the assistant passed. So the real Ada finds out that "Ada" changed
+        Mom's warfarin, and can stand it down, rather than nobody noticing."""
+        about = self.h.name_of(scope) if scope else None
+        subject = phrasing.subject(belief.domain, belief.slot, about)
+        holders = [m.name for m in self.h.members.values()
+                   if m.authority_over(belief.domain) >= 100]
+        self.care.book.post(
+            f"{subject[:1].upper()}{subject[1:]} was changed to "
+            f"{phrasing.spoken(belief.domain, belief.slot, belief.value)}, on "
+            f"{phrasing.possessive(self.h.name_of(belief.holder))} word. If that "
+            f"was not {self.h.name_of(belief.holder)}, stand it down: "
+            f"[{belief.id}].", to=holders, by="Hearth", now=self._now,
+            pin_for=2 * 86400, about=belief.id)
+        self.care.book.save()
+
+    def _settle_proposals(self, belief):
+        """The holder has spoken on a slot somebody proposed a change to:
+        the proposal is settled either way, and says which."""
+        lines = []
+        for p in self.h.beliefs:
+            if (p.status == "proposed" and p.key() == belief.key()
+                    and p.id != belief.id):
+                agreed = p.value == belief.value
+                p.status = "superseded"
+                p.superseded_by = belief.id
+                p.ended_reason = (f"confirmed by {self.h.name_of(belief.holder)}"
+                                  if agreed else
+                                  f"{self.h.name_of(belief.holder)} decided otherwise")
+                self.h._audit(p, "settled", by=belief.holder, agreed=agreed)
+                for post in self.care.book.board:      # asked and answered
+                    if post.get("about") == p.id:
+                        post.pop("pin_until", None)
+                lines.append(f"That {'confirms' if agreed else 'answers'} "
+                             f"{phrasing.possessive(self.h.name_of(p.holder))} "
+                             f"proposal.")
+        if lines:
+            self.h._persist()
+            self.care.book.save()
+        return lines[:1]
 
     def _tool_whats_true(self, domain, slot, about=None):
         mid = self._member_id(about)
@@ -722,17 +822,46 @@ class HearthMCP:
                     "status": "info"}],
                 "footer": "Second dose stopped by Hearth and recorded"},
                 outcome="refused", medication=med)
+        if st["limit"] is None:
+            return self._no_rule_dose(st, given_by, self_given)
         line = (f"Logged. {phrasing.possessive(her)} {med}, given by "
                 f"{self.care._name(given_by)} "
                 f"{carelib.when_said(st['dose']['at'], self._now)}.")
-        if st["limit"] is None:
-            line += " Nobody has told me how often it is taken, so I cannot check the limit."
-        elif st["remaining"] == 0:
+        if st["remaining"] == 0:
             line += " That is all for today."
         return _text(line, {
             "pattern": "card", "tone": "ok", "eyebrow": f"{her} · {med}",
             "title": "Dose logged", "body": self._rule_meta(st),
             "items": self._dose_items(st)}, outcome="done", medication=med)
+
+    def _no_rule_dose(self, st, given_by, self_given):
+        """A medicine the household has no rule for. "Logged" here used to
+        sound like a yes, and it is not one: Hearth cannot say whether this is
+        safe, so it says so, names who can, and keeps the note."""
+        who, med = st["person"], carelib.med_spoken(st["medication"])
+        her = who.name if who else "them"
+        holder = self.care.say_holder(f"medication.{st['medication']}")
+        ask = (f"Check with {holder.name} first, who has the say over "
+               f"{'your' if self_given else phrasing.possessive(her)} medication."
+               if holder and not (self_given and holder.id == who.id) else
+               "Check with the doctor or pharmacist first.")
+        when = carelib.when_said(st["dose"]["at"], self._now)
+        if self_given:
+            name = who.aliases[0] if who and who.aliases else ""
+            line = (f"I don't have a rule for your {med}{', ' + name if name else ''}, "
+                    f"so I can't tell you whether it's all right. {ask} "
+                    f"I've noted that you're taking it, {when}.")
+        else:
+            line = (f"I don't have a rule for {phrasing.possessive(her)} {med}, so I "
+                    f"can't tell you whether it's all right. {ask} I've noted it, "
+                    f"given by {self.care._name(given_by)} {when}.")
+        return _text(line, {
+            "pattern": "card", "tone": "warn", "eyebrow": f"{her} · {med}",
+            "title": "No rule for this medicine",
+            "body": (f"Ask {holder.name}" if holder else "Ask the doctor or pharmacist")
+                    + " how often it is taken.",
+            "items": self._dose_items(st)}, outcome="no_rule",
+            medication=st["medication"])
 
     def _tool_arrange(self, what, when, asked_by, person=None, where=None):
         out = self.care.arrange(what, when, asked_by, person, where, now=self._now)

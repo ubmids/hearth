@@ -109,12 +109,97 @@ def test_a_first_dose_is_logged_and_the_next_one_refused():
     print("PASS first dose logged, second refused")
 
 
-def test_a_medicine_with_no_rule_is_logged_and_says_it_cannot_check():
+def test_a_medicine_with_no_rule_is_not_waved_through():
+    """Audit 028 #6. "Logged." sounded like a yes for a medicine Hearth has no
+    rule for. Now it says it cannot tell, and names who can; the note is kept."""
     house = House()
     reply = house.say("give_dose", medication="paracetamol", given_by="Grace")
-    assert reply.startswith("Logged."), reply
-    assert "cannot check the limit" in reply, reply
-    print("PASS an unknown medicine is logged with a warning")
+    assert not reply.startswith("Logged"), reply
+    assert reply.startswith("I don't have a rule for Mom's paracetamol, so I "
+                            "can't tell you whether it's all right."), reply
+    assert "Check with Ada first, who has the say over Mom's medication." in reply
+    res = house.call("give_dose", medication="vitamin D", given_by="Rose")
+    text = res["content"][0]["text"]
+    assert text.startswith("I don't have a rule for your vitamin D, Rose"), text
+    assert res["structuredContent"]["outcome"] == "no_rule", res
+    assert res["structuredContent"]["card"]["tone"] == "warn", res
+    assert [d["medication"] for d in house.server.care.book.doses[-2:]] == [
+        "paracetamol", "vitamin_d"]
+    print("PASS an unknown medicine is noted, never waved through:", text[:60])
+
+
+def test_the_name_on_the_bottle_is_still_the_medicine_with_the_rule():
+    """Audit 028 #6, probe I. give_dose("warfarin sodium") was logged as a new
+    medicine with no rule, so a second warfarin went through. Every way the
+    same drug is written lands on the rule now."""
+    for said in ("warfarin sodium", "Jantoven 5mg tablet", "Warfarin 5 mg",
+                 "her Coumadin", "WARFARIN"):
+        house = House(subject=f"bottle-{said}")
+        reply = house.say("give_dose", medication=said, given_by="Rose")
+        assert reply.startswith("Hold on, Rose. Grace gave you today's warfarin"), (said, reply)
+    print("PASS warfarin sodium, Jantoven 5mg, Coumadin: all refused as warfarin")
+
+
+def test_a_medication_rule_from_someone_without_the_say_is_only_a_proposal():
+    """Audit 028 #6/#15, probe E. Tom said "twice a day" and heard "Noted, on
+    Tom's word. Mom's warfarin is twice a day" while the house kept once a day.
+    Now he hears what still stands and who decides, and Ada is asked."""
+    house = House()
+    reply = house.say("remember", said="Mom's warfarin is twice a day", speaker="Tom")
+    assert reply.startswith("Noted, Tom. Ada has the say over Mom's warfarin, so it "
+                            "stays once a day until Ada confirms. I've asked Ada."), reply
+    assert "is twice a day" not in reply, reply
+    p = next(b for b in house.home[0].beliefs if b.status == "proposed")
+    assert (p.value, house.home[0].name_of(p.holder)) == ("2", "Tom")
+    assert p.is_live() is False
+    assert house.say("whats_true", domain="medication.warfarin", slot="per_day",
+                     about="Mom").startswith("Mom's warfarin is once a day.")
+    assert house.say("give_dose", medication="warfarin",
+                     given_by="Rose").startswith("Hold on, Rose."), "proposal applied"
+    ada = house.say("catch_up", person="Ada")
+    assert "Tom asked to change Mom's warfarin to twice a day. It needs Ada to confirm" in ada, ada
+    print("PASS a non-holder's medication rule is a proposal, said as one")
+
+
+def test_the_holder_settles_a_proposal_either_way():
+    house = House()
+    house.say("remember", said="Mom's warfarin is twice a day", speaker="Tom")
+    yes = house.say("remember", said="Mom's warfarin is twice a day", speaker="Ada")
+    assert yes.startswith("Noted, on Ada's word. Mom's warfarin is twice a day."), yes
+    assert yes.endswith("That confirms Tom's proposal."), yes
+    p = next(b for b in house.home[0].beliefs if house.home[0].name_of(b.holder) == "Tom"
+             and b.domain == "medication.warfarin")
+    assert (p.status, p.ended_reason) == ("superseded", "confirmed by Ada"), p
+    # Twice a day now, so the second dose is allowed.
+    assert house.say("give_dose", medication="warfarin",
+                     given_by="Rose").startswith("Logged."), "holder's rule ignored"
+
+    other = House(subject="settle-no")
+    other.say("remember", said="Mom's warfarin is twice a day", speaker="Tom")
+    no = other.say("remember", said="Mom's warfarin is once a day", speaker="Ada")
+    assert no.endswith("That answers Tom's proposal."), no
+    p = next(b for b in other.home[0].beliefs if b.ended_reason.endswith("otherwise"))
+    assert p.ended_reason == "Ada decided otherwise", p.ended_reason
+    print("PASS the holder confirms or turns down a proposal, and it says which")
+
+
+def test_a_change_made_in_the_holders_name_is_put_in_front_of_the_holder():
+    """Audit 028 #6, probe "Tom claims to be Ada". Hearth cannot hear who is
+    talking, so a spoofed name still changes the rule; what it can do is make
+    sure the real holder sees it, with the reference to stand it down."""
+    house = House()
+    reply = house.say("remember", said="Mom's warfarin is twice a day", speaker="Ada")
+    bid = reply.split("[")[1].split("]")[0]
+    post = house.server.care.book.board[-1]
+    assert post["to"] == ["Ada"] and post["by"] == "Hearth", post
+    assert post["text"] == (f"Mom's warfarin was changed to twice a day, on Ada's "
+                            f"word. If that was not Ada, stand it down: [{bid}]."), post
+    assert "If that was not Ada" in house.say("catch_up", person="Ada")
+    # Restating the rule that already stands is not a change, and is not posted.
+    n = len(house.server.care.book.board)
+    house.say("remember", said="Mom's warfarin is twice a day", speaker="Ada")
+    assert len(house.server.care.book.board) == n
+    print("PASS a medication change on the holder's word is shown to the holder")
 
 
 def test_check_dose_answers_who_and_when():
