@@ -776,13 +776,15 @@ class HearthMCP:
         ok, bad = self.trace.verify()
         recent = list(reversed(self.trace.entries))[:max(1, min(int(limit or 10), 50))]
         refused = sum(1 for e in self.trace.entries if e.outcome == "refused")
-        line = (f"{len(self.trace.entries)} calls on the record, "
+        n = len(self.trace.entries)
+        calls = f"{n} call" if n == 1 else f"{n} calls"
+        line = (f"{calls} on the record, "
                 + (f"{refused} refused, " if refused else "")
                 + ("and the chain is intact: nothing has been edited or removed."
                    if ok else f"and the chain is broken at entry {bad}."))
         return _text(line, {
             "pattern": "list", "tone": "ok" if ok else "stop",
-            "eyebrow": "The record", "title": f"{len(self.trace.entries)} calls",
+            "eyebrow": "The record", "title": calls.capitalize(),
             "body": "Written by the server as each call happened. "
                     + ("Integrity check passed." if ok else f"Broken at #{bad}."),
             "items": [{"label": f"#{e.seq} {e.tool}", "detail": e.summary[:120],

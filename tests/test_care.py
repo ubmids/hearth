@@ -469,6 +469,27 @@ def test_times_are_parsed_the_way_people_and_models_pass_them():
     print("PASS times")
 
 
+def test_the_record_counts_in_english():
+    house = House()
+    house.say("give_dose", medication="warfarin", given_by="Rose")
+    one = house.call("record")
+    assert one["content"][0]["text"].startswith("1 call on the record, 1 refused"), one
+    assert one["structuredContent"]["card"]["title"] == "1 call"
+    house.say("check_dose", medication="warfarin", asked_by="Tom")
+    two = house.say("record")
+    assert two.startswith("3 calls on the record"), two
+    print("PASS the record counts in English:", two)
+
+
+def test_a_sibling_last_checked_in_on_a_real_evening():
+    # Tom's last word to the house is seeded on an evening two days back, so
+    # "since you last checked in" reads like a call, not a timestamp.
+    house = House()
+    reply = house.say("catch_up", person="Tom")
+    assert "at 7:30 pm" in reply, reply
+    print("PASS catch-up names a real evening:", reply[:60])
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
