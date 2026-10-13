@@ -591,13 +591,17 @@ class HearthMCP:
     def _ended(self, context, ended):
         """What the house says when a situation closes, naming who each rule
         was about: "Mom's alcohol is off limits", never "the alcohol"."""
-        gone = " ".join(phrasing.statement(
-            b.domain, b.slot, b.value,
-            self.h.name_of(b.scope) if b.scope else None) for b in ended)
+        # Each rule is named with whose it was, so the family hears what has
+        # stopped and on whose word it had been holding.
+        def rule(b):
+            said = phrasing.statement(b.domain, b.slot, b.value,
+                                      self.h.name_of(b.scope) if b.scope else None)
+            said = said.rstrip(".")
+            if said.startswith("The "):
+                said = "the " + said[4:]
+            return f"{self.h.name_of(b.holder)}'s rule that {said} no longer applies."
         return _text(f"Understood, {context} {phrasing.is_are(context)} over. "
-                     f"{gone} "
-                     f"{'That' if len(ended) == 1 else 'Those'} no longer "
-                     f"{'applies' if len(ended) == 1 else 'apply'}.")
+                     + " ".join(rule(b) for b in ended))
 
     def _tool_household(self):
         lines = [f"{m.name} ({m.role}"

@@ -445,7 +445,7 @@ def test_the_care_sentences_become_beliefs_and_situations_end():
     house = House()
     reply = house.say("remember", said="Mom finished the antibiotics", speaker="Ada")
     assert reply.startswith("Understood, the antibiotics are over."), reply
-    assert "Mom's alcohol is off limits. That no longer applies." in reply, reply
+    assert "Ada's rule that Mom's alcohol is off limits no longer applies." in reply, reply
     rota = house.say("remember", said="I can do Saturdays", speaker="Tom")
     assert "The Saturday escort is Tom." in rota, rota
     print("PASS care sentences and endings")
