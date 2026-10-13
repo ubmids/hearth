@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth</title>
+<!--
+  Hearth's MCP App view (MCP Apps, io.modelcontextprotocol/ui, 2026-01-26).
+
+  One self-contained file, no network, as the Alexa+ layout guide asks: it runs
+  in a sandboxed iframe with no storage and talks to the host only over the
+  postMessage bridge. It draws the `card` in a tool result's structuredContent
+  using the two patterns Alexa+ allows for this kind of content, Card and List,
+  sized for the 768x480 base canvas of an Echo Show.
+-->
+<style>
+  :root{--bg:#1a1411;--ink:#fbf3ec;--muted:#cdb9aa;--dim:#8d7868;--line:#3a2d26;
+        --stop:#ff6b4a;--ok:#7fd49a;--warn:#ffc35c;--info:#9ec5ff;--tone:var(--info)}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font:20px/1.4 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  body.light{--bg:#fbf6f1;--ink:#24180f;--muted:#5d4a3c;--dim:#8d7868;--line:#e7d9cc}
+  .card{min-height:100vh;padding:26px 30px 22px;display:flex;flex-direction:column;
+        border-top:8px solid var(--tone)}
+  .eyebrow{font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
+           font-weight:650}
+  h1{font-size:40px;line-height:1.08;letter-spacing:-.02em;margin:6px 0 4px;font-weight:720;
+     color:var(--tone)}
+  .tone-info h1{color:var(--ink)}
+  .body{color:var(--muted);font-size:21px;margin:2px 0 10px}
+  ul{list-style:none;margin:6px 0 0;padding:0;flex:1}
+  li{display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+  .mark{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+        font-size:17px;font-weight:800;color:var(--bg);background:var(--dim);margin-top:2px}
+  .s-done .mark,.s-won .mark{background:var(--ok)}
+  .s-lost .mark{background:var(--stop)}
+  .s-needs_attention .mark{background:var(--warn)}
+  .s-info .mark{background:var(--info)}
+  .lab{font-weight:650;font-size:19px}
+  .det{font-size:19px;color:var(--ink)}
+  .meta{font-size:16px;color:var(--dim)}
+  .s-lost .det{color:var(--muted)}
+  .foot{display:flex;align-items:center;gap:12px;margin-top:12px;font-size:14px;color:var(--dim)}
+  .rec{margin-left:auto;font-family:ui-monospace,Menlo,monospace;border:1px solid var(--line);
+       border-radius:999px;padding:4px 10px}
+  button{font:inherit;font-size:21px;font-weight:700;color:#1a1411;background:var(--ok);
+         border:0;border-radius:14px;padding:14px 22px;margin-top:14px;cursor:pointer;align-self:flex-start}
+  .empty{color:var(--dim);padding:40px 30px}
+</style>
+<body>
+<div id="root" class="empty">Hearth</div>
+<script>
+(() => {
+  const root = document.getElementById("root");
+  let nextId = 1;
+  const pending = {};
+
+  function send(msg) { window.parent.postMessage(msg, "*"); }
+  function request(method, params) {
+    const id = nextId++;
+    send({jsonrpc: "2.0", id, method, params});
+    return new Promise(res => { pending[id] = res; });
+  }
+  function notify(method, params) { send({jsonrpc: "2.0", method, params}); }
+
+  const esc = s => String(s ?? "").replace(/[&<>"]/g,
+    c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  const MARK = {done: "✓", won: "✓", lost: "✕", needs_attention: "!", info: "i"};
+
+  function render(result) {
+    const sc = (result && result.structuredContent) || {};
+    const c = sc.card;
+    if (!c) {
+      root.className = "empty";
+      root.textContent = sc.speech || ((result.content || [])[0] || {}).text || "";
+      return;
+    }
+    const tone = {stop: "--stop", ok: "--ok", warn: "--warn", info: "--info"}[c.tone] || "--info";
+    root.className = "card tone-" + (c.tone || "info");
+    root.style.setProperty("--tone", `var(${tone})`);
+    const items = (c.items || []).slice(0, c.pattern === "list" ? 6 : 4).map(i => `
+      <li class="s-${esc(i.status || "info")}">
+        <span class="mark">${MARK[i.status] || "•"}</span>
+        <div><div class="lab">${esc(i.label)}</div>
+             <div class="det">${esc(i.detail)}</div>
+             ${i.meta ? `<div class="meta">${esc(i.meta)}</div>` : ""}</div>
+      </li>`).join("");
+    const rec = sc.record ? `<span class="rec">recorded #${esc(sc.record.seq)} · ${esc(sc.record.hash)}</span>` : "";
+    root.innerHTML = `
+      <div class="eyebrow">${esc(c.eyebrow)}</div>
+      <h1>${esc(c.title)}</h1>
+      ${c.body ? `<div class="body">${esc(c.body)}</div>` : ""}
+      <ul>${items}</ul>
+      ${c.cta ? `<button id="cta">${esc(c.cta.label)}</button>` : ""}
+      <div class="foot"><span>${esc(c.footer || "Hearth")}</span>${rec}</div>`;
+    const b = document.getElementById("cta");
+    if (b) b.onclick = () => request("ui/message", {
+      role: "user", content: {type: "text", text: c.cta.message},
+      _meta: {checkout: c.cta.checkout}});
+    notify("ui/notifications/size-changed",
+           {width: document.body.scrollWidth, height: document.body.scrollHeight});
+  }
+
+  window.addEventListener("message", ev => {
+    const m = ev.data;
+    if (!m || m.jsonrpc !== "2.0") return;
+    if (m.id && pending[m.id]) { pending[m.id](m.result); delete pending[m.id]; return; }
+    if (m.method === "ui/notifications/tool-result") render(m.params);
+    if (m.method === "ui/notifications/host-context-changed") theme(m.params);
+  });
+
+  function theme(ctx) {
+    if (ctx && ctx.theme) document.body.classList.toggle("light", ctx.theme === "light");
+  }
+
+  request("ui/initialize", {
+    protocolVersion: "2026-01-26",
+    appInfo: {name: "hearth-card", version: "1.0.0"},
+    appCapabilities: {}
+  }).then(r => { theme(r && r.hostContext); notify("ui/notifications/initialized", {}); });
+})();
+</script>
+</body>
+</html>

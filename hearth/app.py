@@ -16,13 +16,18 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import care as carelib
 from . import phrasing
+from .care import Care, CareBook
 from .extract import detect_context_end, extract
 from .household import Household
 from .ledger import Ledger
 from .mcp import PROTOCOL_VERSION, HearthMCP
 from .oauth import AuthServer
 from .store import Store
+from .trace import Trace
+
+DAY = 86400
 
 
 def seed_demo_household(h: Household) -> None:
@@ -33,6 +38,78 @@ def seed_demo_household(h: Household) -> None:
     h.add_member("Dad", role="adult", grants=["thermostat"])
     h.add_member("Mum", role="adult", grants=["shopping"])
     h.add_member("Ada", role="child", grants=["bedroom.ada"])
+
+
+def seed_care_household(h: Household, book: CareBook, now=None) -> None:
+    """The household Hearth is for: three people looking after a fourth.
+
+    Rose is 84, lives alone with an Echo Show in the kitchen, and takes
+    warfarin, a blood thinner where a second dose in a day is a bleeding risk.
+    Ada, her daughter, holds her health care proxy and has the say over her
+    medication, diet, appointments and spending. Tom, her son, lives two
+    states away and does Thursdays. Grace is the home aide, mornings.
+
+    This is the scene the demo opens on, so it is set in the recent past
+    relative to `now`: the rules were stated days ago, and Grace gave this
+    morning's warfarin at 9:10. All of it is visible, labelled as seeded, in
+    the console. Nothing here is hidden from the record.
+    """
+    if h.members:
+        return
+    now = now or time.time()
+    mom = h.add_member("Mom", role="owner", grants=["thermostat", "meals"],
+                       aliases=["Rose", "Mum", "Grandma", "me", "I"])
+    ada = h.add_member("Ada", role="adult",
+                       grants=["medication.*", "diet", "appointments", "purchases"])
+    tom = h.add_member("Tom", role="adult", grants=["transport"])
+    grace = h.add_member("Grace", role="carer")
+
+    def said(who, domain, slot, value, content, days, scope=None, context=None):
+        h.assert_belief(who.id, domain, slot, value, content=content,
+                        scope=scope, context=context, stated_at=now - days * DAY)
+
+    letter = "Dr. Patel says Mom takes one warfarin a day, at nine in the morning"
+    said(ada, "medication.warfarin", "per_day", "1", letter, 12, scope=mom.id)
+    said(ada, "medication.warfarin", "time", "09:00", letter, 12, scope=mom.id)
+    said(ada, "purchases", "limit", "50",
+         "Up to fifty dollars without asking me", 12)
+    said(ada, "diet", "coffee_cutoff", "15:00",
+         "No coffee for Mom after three, it's keeping her up at night", 12,
+         scope=mom.id)
+    said(tom, "rota", "thursday", "Tom", "I'll take Mom to anything on a Thursday", 9)
+    said(grace, "rota", "tuesday", "Grace", "I can do Tuesdays", 9)
+    said(ada, "diet", "alcohol", "none",
+         "No wine for Mom while she's on the antibiotics", 5,
+         scope=mom.id, context="the antibiotics")
+    said(tom, "diet", "coffee_cutoff", "18:00",
+         "Mom can have coffee till six, it's fine", 2, scope=mom.id)
+
+    # This morning's dose. At 9:10 if that has passed, else half an hour ago,
+    # so the scene reads true whenever it is filmed.
+    today = carelib.local(now).replace(hour=9, minute=10, second=0, microsecond=0)
+    given = today.timestamp() if today.timestamp() < now - 1800 else now - 1800
+    book.doses.append({"id": "dose_seed_morning", "medication": "warfarin",
+                       "person": mom.id, "given_by": grace.id, "at": given})
+
+    # Cardiology next Tuesday at two, Grace escorting, ride booked.
+    d = carelib.local(now)
+    ahead = (1 - d.weekday()) % 7 or 7
+    tue = (d.replace(hour=14, minute=0, second=0, microsecond=0)
+           + carelib.timedelta(days=ahead)).timestamp()
+    book.rides.append({"id": "ride_seed_tue", "appointment": "appt_seed_cardio",
+                       "pickup": tue - 45 * 60, "for": mom.id, "with": "Grace",
+                       "status": "booked", "provider": carelib.RIDES})
+    book.appointments.append({"id": "appt_seed_cardio", "what": "cardiology",
+                              "person": mom.id, "at": tue,
+                              "where": "St. Mary's Heart Center",
+                              "status": "booked", "escort": "Grace",
+                              "ride": "ride_seed_tue"})
+    book.post("Mom slept well and ate all her lunch.", to=["Ada", "Tom"],
+              by="Grace", now=now - 1 * DAY)
+    book.save()
+
+
+SEEDS = {"family", "care"}
 
 
 async def _keepalive(url: str, every: int, log=print):
@@ -64,6 +141,12 @@ async def _keepalive(url: str, every: int, log=print):
 
 
 def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> FastAPI:
+    # `seed` is the household a new subject starts in: "care" (the product's
+    # household), "family" (the original thermostat house, which most of the
+    # conformance suite is written against), True for "family", or False.
+    kind = "family" if seed is True else (seed or None)
+    if kind and kind not in SEEDS:
+        raise ValueError(f"unknown household seed {seed!r}")
     # Without a path the household lives in memory and a restart wipes it. That
     # is wrong for something whose entire pitch is that it remembers who said
     # what and when: a judge who adds a belief, comes back after the instance
@@ -93,11 +176,15 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         if subject not in homes:
             st = Store(f"{data_path}.{subject}") if data_path else None
             h = Household("home", store=st)
-            if seed:
+            book = CareBook(store=st)
+            if kind == "family":
                 seed_demo_household(h)
+            elif kind == "care":
+                seed_care_household(h, book)
             led = Ledger(h, store=st)
-            homes[subject] = (h, led, HearthMCP(h, led, extractor=extract,
-                                                end_detector=detect_context_end))
+            homes[subject] = (h, led, HearthMCP(
+                h, led, extractor=extract, end_detector=detect_context_end,
+                trace=Trace(store=st), care=Care(h, led, book)))
         return homes[subject]
 
     # The default household backs anything that arrives without a subject, and
@@ -206,7 +293,8 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
             return JSONResponse(content, status_code=status, headers=headers)
 
         if isinstance(payload, list):
-            out = [r for r in (server.handle(m) for m in payload) if r is not None]
+            out = [r for r in (server.handle(m, session=sid) for m in payload)
+                   if r is not None]
             return timed(out) if out else timed(None, 202)
 
         if not isinstance(payload, dict):
@@ -230,7 +318,7 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
             return JSONResponse({"error": "no such session"}, status_code=404,
                                 headers=headers)
 
-        result = server.handle(payload)
+        result = server.handle(payload, session=sid)
         if result is None:
             return timed(None, 202)          # notifications are accepted with no body
         return timed(result)
@@ -337,12 +425,41 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
                         for a in reversed(ledger.actions)][:25],
         }
 
+    def _full_state(household, ledger, server):
+        """The console's state plus the two things it now has to show: the
+        server's own record of calls, and the care books."""
+        out = _state(household, ledger)
+        ok, bad = server.trace.verify()
+        book = server.care.book
+        out["record"] = {"intact": ok, "broken_at": bad,
+                         "count": len(server.trace.entries),
+                         "head": server.trace.head()[:12],
+                         "entries": [e.to_dict() for e in
+                                     reversed(server.trace.entries[-40:])]}
+        name = household.name_of
+        out["care"] = {
+            "doses": [{**d, "who": name(d["person"]),
+                       "by": (name(d["given_by"]) if d["given_by"] in household.members
+                              else d["given_by"]),
+                       "when": carelib.when_said(d["at"])}
+                      for d in reversed(book.doses[-10:])],
+            "appointments": [{**a, "who": name(a["person"]),
+                              "when": carelib.when_said(a["at"])}
+                             for a in book.appointments if a["status"] == "booked"],
+            "rides": [{**r, "when": carelib.when_said(r["pickup"])}
+                      for r in book.rides[-6:]],
+            "board": [{**p, "when": carelib.when_said(p["at"])}
+                      for p in reversed(book.board[-8:])],
+            "checkouts": list(reversed(book.checkouts[-5:])),
+        }
+        return out
+
     @app.get("/api/state")
     async def api_state(request: Request):
         tok = auth.verify(request.headers.get("authorization"))
         if tok is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        return _state(*home_for(tok.subject)[:2])
+        return _full_state(*home_for(tok.subject))
 
     @app.post("/api/say")
     async def api_say(request: Request):
@@ -407,6 +524,11 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         # thing to read on a card and the wrong thing to find in a log.
         a = led.record(f"set {phrasing.subject(domain, slot, named)} "
                        f"to {r.winner.value}", domain, resolution=r)
+        # The console acting is still an action, so it goes on the record.
+        home_for(tok.subject)[2].trace.append(
+            tool="console.act", args={"domain": domain, "slot": slot,
+                                      "about": about},
+            outcome="ok", summary=a.what, reads=[r.winner.id], action=a.id)
         return {"reply": f"Set {phrasing.subject(domain, slot, named)} "
                          f"to {r.winner.value}.",
                 "why": led.why(action_id=a.id), "state": _state(h, led)}
@@ -424,6 +546,87 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
                            f"{phrasing.subject(b.domain, b.slot, h.name_of(b.scope) if b.scope else None)}.")
                           if b else "No standing belief with that id."),
                 "state": _state(h, led)}
+
+    # --- checkout: the pharmacy refill, paid the Alexa+ way -----------------
+    # Alexa+ owns payment. An add-on exposes checkout sessions shaped by the
+    # Universal Commerce Protocol, Alexa collects the confirmation and the card,
+    # and then completes the session here. The `reorder` tool only opens one.
+    # This is a sandbox merchant: nothing is charged and nothing ships.
+    @app.get("/.well-known/ucp")
+    async def ucp_profile():
+        return {"merchant": carelib.PHARMACY, "sandbox": True,
+                "capabilities": {"checkout": {
+                    "endpoint": f"{issuer}/checkout-sessions",
+                    "operations": ["create", "get", "update", "complete", "cancel"]}},
+                "payment_handlers": ["com.amazon.payments.network_token"],
+                "currency": "USD"}
+
+    def _caller_home(request: Request):
+        tok = auth.verify(request.headers.get("authorization"))
+        return home_for(tok.subject) if tok else None
+
+    def _receipt(srv, op, sess, outcome="ok"):
+        # Checkout calls are not MCP tool calls, and they are the calls that
+        # move money, so they go on the same record as everything else.
+        srv.trace.append(tool=f"checkout.{op}",
+                         args={"session": sess["id"] if sess else None},
+                         outcome=outcome,
+                         summary=(f"{sess['status']} {sess['id']}" if sess else op),
+                         writes=[sess["id"]] if sess else [])
+
+    @app.post("/checkout-sessions")
+    async def checkout_create(request: Request):
+        home = _caller_home(request)
+        if home is None:
+            return _unauthorized()
+        h, led, srv = home
+        body = await request.json()
+        li = (body.get("line_items") or [{}])[0]
+        item_id = (li.get("item") or {}).get("id", "")
+        name = next((k for k, v in carelib.CATALOG.items() if v["id"] == item_id),
+                    item_id)
+        try:
+            sess = srv.care.reorder(name, body.get("buyer") or "someone",
+                                    li.get("quantity") or 1)
+        except ValueError as e:
+            return JSONResponse({"error": "invalid_item", "message": str(e)},
+                                status_code=400)
+        _receipt(srv, "create", sess)
+        return JSONResponse(sess, status_code=201)
+
+    @app.get("/checkout-sessions/{sid}")
+    async def checkout_get(sid: str, request: Request):
+        home = _caller_home(request)
+        if home is None:
+            return _unauthorized()
+        sess = next((c for c in home[2].care.book.checkouts if c["id"] == sid), None)
+        return sess or JSONResponse({"error": "not_found"}, status_code=404)
+
+    @app.post("/checkout-sessions/{sid}/complete")
+    async def checkout_complete(sid: str, request: Request):
+        home = _caller_home(request)
+        if home is None:
+            return _unauthorized()
+        srv = home[2]
+        sess, err = srv.care.complete(sid, request.headers.get("idempotency-key"))
+        if err == "not_found":
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        _receipt(srv, "complete", sess, "refused" if err else "ok")
+        if err:
+            return JSONResponse({**sess, "error": err}, status_code=409)
+        return sess
+
+    @app.post("/checkout-sessions/{sid}/cancel")
+    async def checkout_cancel(sid: str, request: Request):
+        home = _caller_home(request)
+        if home is None:
+            return _unauthorized()
+        srv = home[2]
+        sess, err = srv.care.cancel(sid)
+        if err == "not_found":
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        _receipt(srv, "cancel", sess, "refused" if err else "ok")
+        return JSONResponse(sess, status_code=409 if err else 200)
 
     # The add-on manifest requires HTTPS URLs for six icons, a carousel image,
     # a privacy policy and terms of use. Serving them from the service itself
@@ -525,4 +728,4 @@ not use it for anything other than running the service for you.</p>
     return app
 
 
-app = create_app()
+app = create_app(seed=os.getenv("HEARTH_HOUSEHOLD", "care"))

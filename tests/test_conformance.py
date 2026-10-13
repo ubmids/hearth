@@ -758,7 +758,9 @@ def test_every_tool_schema_is_one_a_model_can_actually_fill_in():
         assert schema["type"] == "object", name
         props = schema["properties"]
         for prop, spec in props.items():
-            assert spec["type"] == "string", (name, prop)
+            # Strings, and whole numbers for counts, which a model fills in
+            # as reliably and which the tool would otherwise have to parse.
+            assert spec["type"] in ("string", "integer"), (name, prop)
         for req in schema.get("required", []):
             assert req in props, (name, req)
         assert t["title"] and t["description"], name
