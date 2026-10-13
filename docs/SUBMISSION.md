@@ -12,11 +12,22 @@ the friction log (`docs/FRICTION_LOG.md`, 11 platform entries).
 MCP server, implementing MCP spec version 2025-11-25 … over Streamable HTTP",
 or a simulated Alexa+ experience whose source is in the repo. Hearth is the MCP
 server (and ships an Agent Skill), and the simulated client is in the repo at
-`hearth/web/alexa.html`. 62 conformance tests assert the protocol version on
-the handshake and the header.
+`hearth/web/alexa.html`. Hearth's own conformance tests assert the protocol
+version on the handshake and the header, and the official MCP conformance
+suite (`@modelcontextprotocol/conformance` 0.1.16, `scripts/conformance.sh`)
+passes every scenario that applies to it.
 
 **Pre-existing work.** The repository was first committed on 14 September
-2026, inside the hackathon window, so all of it is new work.
+2026, inside the hackathon window, and all of its code was written for this
+event. It takes design ideas, not code, from the author's earlier single-user
+memory server Cortex (`ubmids/cortex`, July 2026): retiring a fact with a
+reason instead of deleting it, and an audit trail. A verbatim-overlap check
+finds about 15 shared non-trivial lines out of roughly 2,500 (see
+`docs/SPEC.md`).
+
+**Track and mini challenge.** Primary track: **Alexa+**. Mini challenge:
+**Open Source**, with `alexa-plus-mcp-checks` (see "Open Source mini challenge"
+below).
 
 ---
 
@@ -67,13 +78,22 @@ Hearth is an Alexa+ add-on, built as a self-hosted MCP server. It is the
 family's shared memory and its conscience.
 
 - **It stops the second dose.** `give_dose` checks the family's rule against
-  today's record and refuses. The check runs in server code, so it holds
-  whatever the model would have said.
-- **One request, five services.** "Mom's cardiology moved to Thursday at ten,
+  today's record and refuses. The check runs in server code, so once the
+  assistant reports the dose, nothing the model says can turn the refusal into
+  a yes. The name on the bottle ("warfarin sodium", "Jantoven 5 mg") reaches
+  the same rule, and a medicine with no rule gets "check with Ada first", not
+  "logged".
+- **Only the person with the say can change a medication rule.** When Tom says
+  "Mom's warfarin is twice a day", Hearth files it as a proposal and answers
+  "Ada has the say over Mom's warfarin, so it stays once a day until Ada
+  confirms." Ada settles it by saying the rule herself, and any change made in
+  her name is pinned on her board, because Hearth cannot hear who is speaking.
+- **One request, four steps.** "Mom's cardiology moved to Thursday at ten,
   sort it out." Hearth moves the calendar entry, assigns Tom because the family
-  rota says he does Thursdays, cancels Tuesday's ride, books a new one for 9:15,
-  tells the family board, and warns if a dose falls during the trip. That is one
-  sentence and one tool call, and every step is on the record.
+  rota says he does Thursdays, cancels Tuesday's ride and books a new one for
+  9:15 (a sandbox ride provider), tells the family board, and warns if a dose
+  falls during the trip. That is one sentence and one tool call, and every step
+  is on the record.
 - **It remembers across sessions and devices.** That evening, Tom asks his own
   Echo Dot "What did I miss with Mom?" Hearth knows when he last talked to the
   house and tells him only what has changed since, including the dose it
@@ -111,14 +131,20 @@ family's shared memory and its conscience.
 - **No model on the read path.** Resolving what is true is a dictionary lookup
   (scope, then authority, then recency, with a reason), so every answer fits
   the 500 ms Alexa+ allows. The server's own time is stamped on every response
-  in `Server-Timing`, typically under 2 ms.
+  in `Server-Timing`: p50 about 0.1 ms for `check_dose` on our test box, flat
+  from the first call to the 5,000th, because the record is appended, never
+  rewritten.
 - **An Agent Skill** (`skills/hearth-care/SKILL.md`, open Agent Skills format)
-  that teaches any agent to use Hearth safely. `demo/assistant.py` runs it with
-  Claude Code as the MCP client against the same server.
+  that teaches any agent to use Hearth safely. The simulated client's model
+  planner loads it. `demo/assistant.py` is written to run it with Claude Code
+  as a second MCP client; that run has not happened yet.
 - **One household per account**, isolated, persisted to disk.
-- **160 tests**, 62 of them Alexa+ conformance, plus an interop test in which
-  the official MCP Python SDK client talks to Hearth unmodified. The suite has
-  been mutation tested.
+- **Tests**: Hearth's own suite (conformance tests written from the Alexa+
+  requirements as documented, the care household, the record, resolution,
+  phrasing, extraction, the listing, the simulator), an interop test in which
+  the official MCP Python SDK client talks to Hearth unmodified, and the
+  official MCP conformance suite in CI. Parts of the suite came from hand
+  mutation testing of `oauth.py`, `household.py` and `app.py`.
 
 ### Simulated, and why
 
@@ -156,8 +182,13 @@ family, so that even the operator cannot rewrite it unnoticed.
 
 ## Links
 
-- Repository: https://github.com/ubmids/hearth (make it public, or share it
-  privately with testing@devpost.com)
+- Repository: https://github.com/ubmids/hearth. Either public with the MIT
+  licence showing in the About section (needed for the Open Source mini
+  challenge anyway), or private and shared with testing@devpost.com **and** the
+  six GitHub reviewers named in the 16 September update: `chris-trag`,
+  `knmeiss`, `giolaq`, `anishamalde`, `mosesroth`, `emersonsklar`.
+- Live MCP endpoint: (URL, once `first-place` is redeployed; must stay up
+  through judging, which ends 20 November)
 - Video: (YouTube/Vimeo URL, public)
 - Audio of the scenes, for judges who prefer it: `demo/hold-on-rose.m4a`
 
@@ -192,8 +223,8 @@ The protocol choice. Naming the version outright (`2025-11-25`, not "the
 latest") removed a whole class of ambiguity. Streamable HTTP is the right
 transport and the deprecation of HTTP+SSE is clearly stated. Pointing add-on
 visuals at MCP Apps rather than a proprietary format, and payments at UCP, means
-the same server works with any MCP host. Hearth's second client, Claude Code,
-needed no changes. The functional requirements (confirm before high-consequence
+the same server works with any MCP host: the official MCP Python SDK client
+talks to Hearth with no changes on either side. The functional requirements (confirm before high-consequence
 actions, detect duplicate transactions, keep household members' data isolated)
 are the right ones and shaped the design.
 
@@ -232,8 +263,8 @@ of a week.
 ### Would you build with these tools again?
 
 **Yes.** Building on open standards (MCP, MCP Apps, UCP) is the right call,
-and it is why the same server works in our simulator and in another assistant
-without changes. The reservations are about documentation and access, which
+and it is why the same server works in our simulator and with the official
+MCP SDK client without changes. The reservations are about documentation and access, which
 are the cheapest things here to fix.
 
 ## Feature requests (priority in brackets)
@@ -261,13 +292,17 @@ are the cheapest things here to fix.
 - [ ] Video under 3:00, public on YouTube or Vimeo, recorded from
       `docs/DEMO_SCRIPT.md`; SIMULATED ALEXA+ visible throughout
 - [ ] Repository public with the MIT licence visible, or shared privately with
-      testing@devpost.com (decide; the task did not authorise changing
+      testing@devpost.com and `chris-trag`, `knmeiss`, `giolaq`, `anishamalde`,
+      `mosesroth`, `emersonsklar` (Subomi decides; agents may not change
       visibility)
 - [ ] Merge `first-place` into `master` (or point the submission at the branch)
 - [ ] Product feedback and feature requests pasted from above
 - [ ] Friction log attached or linked: `docs/FRICTION_LOG.md`
-- [ ] Optional live URL: the Render workspace is suspended for billing. Either
-      restore it (and set `HEARTH_REDIRECT_URIS` to include `<issuer>/alexa`)
-      or leave the live URL out; the rules do not require one
+- [ ] Live URL: judge Emerson Sklar said on the forum (topic 45493) that the
+      endpoint "needs to be live and accessible till the end of the judging
+      period" (20 November). The Render URL is up but serves an old `master`
+      build (`/alexa` is 404). Redeploy `first-place` with
+      `HEARTH_REDIRECT_URIS=<issuer>/console,<issuer>/alexa` and check
+      `/healthz` shows `"members":4` and `/alexa` answers 200
 - [ ] Secret sweep before the repo goes public
 - [ ] Submitted by 21 October; hard deadline 23 October, 12:00 PDT

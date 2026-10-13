@@ -320,7 +320,7 @@ def test_arrange_moves_the_appointment_and_does_everything_that_follows():
     # Every step is its own ledger action, bound to the rule that decided it.
     rota = next(a for a in house.home[1].actions if a.domain == "rota")
     assert rota.resolution.winner.holder == house.home[0].member_named("Tom").id
-    print("PASS one request, five services:", speech)
+    print("PASS one request, every step:", speech)
 
 
 def test_arrange_flags_a_day_nobody_covers():

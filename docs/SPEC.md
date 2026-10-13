@@ -25,10 +25,14 @@ allowlist is documented.
 The OAuth surface is where most of the field will cut corners. Doing it properly is a cheap
 Tech Implementation win.
 
-## Reuse from Cortex
+## Design ideas from Cortex
 
-Cortex already ships, tested: `mcp_server.py`, `supersede(reason=...)`, per-access audit trail
-with provenance, exportable audit report, salience-scaled decay. Hearth forks that spine.
+Cortex (`ubmids/cortex`, July 2026, before this hackathon) is an earlier single-user memory
+server by the same author. Hearth takes design ideas from it: retiring a fact with a reason
+rather than deleting it, and an audit trail of who changed what. It does not fork its code:
+Hearth was written from scratch for this event, and a verbatim-overlap check found about 15
+shared non-trivial lines out of roughly 2,500, mostly boilerplate. (An earlier version of this
+plan said "Hearth forks that spine"; that was the plan, not what was built.)
 
 ## New work for this event
 

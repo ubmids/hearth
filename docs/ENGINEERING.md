@@ -42,10 +42,13 @@ next step and is not built.
 
 ## Live
 
-https://hearth-sh3u.onrender.com, console at `/console`, simulated client at
-`/alexa`, MCP at `/mcp`. **Currently down:** the Render workspace is suspended
-for billing, and the deployed build predates the care household. Run it
-locally (README, "Try it") until it is restored.
+https://hearth-sh3u.onrender.com is **up but stale** (checked 13 October
+2026): `/healthz` answers 200 with three members and no beliefs, and `/alexa`
+is a 404. It is serving an old `master` build, the thermostat household with no
+simulated client, not this branch. Redeploying `first-place` there (or anywhere)
+is a step for Subomi, and the organisers say the endpoint should stay live
+until judging ends (20 November). Until then, run it locally (README, "Try
+it").
 
 `python3 tests/test_live.py https://hearth-sh3u.onrender.com` runs the whole
 conformance suite against the deployment, including a real OAuth 2.1 PKCE
@@ -62,7 +65,22 @@ Amazon requires "a round-trip query response latency of less than 500 ms."
 | a home connection in Lagos | 329ms | 680ms |
 
 The server's contribution is four hundredths of a millisecond. Everything else
-is distance. It passes comfortably from a datacentre and fails from the author's
+is distance.
+
+That figure was taken on a near-empty record, and it hid a growth problem the
+red-team audit found: every call rewrote the whole record file, so the cost
+grew with the number of calls. Measured locally with `scripts/trace_latency.py`
+(`check_dose`, one kept-alive connection, server time from `Server-Timing`):
+
+| calls so far | before (rewrite) p50 | after (append one line) p50 |
+|---|---|---|
+| 1–500 | 2.10 ms | 0.09 ms |
+| 2,501–3,000 | 21.92 ms | 0.10 ms |
+| 4,501–5,000 | not run | 0.10 ms |
+
+The record is now JSON Lines, appended (`hearth/store.py`), and
+`tests/test_care.py` asserts the cost at 5,000 calls stays within 3x of the
+cost at 50. It passes comfortably from a datacentre and fails from the author's
 home, and the second number is the irrelevant one, because Alexa+ calls from AWS
 and not from Lagos.
 

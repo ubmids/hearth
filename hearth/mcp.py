@@ -889,7 +889,7 @@ class HearthMCP:
                      f"{carelib.local(a['at']).strftime('%A')} {carelib.clock(a['at'])}",
             "items": [{"label": s["service"].title(), "detail": s["line"],
                        "status": s["status"]} for s in out["steps"]],
-            "footer": f"{len(out['steps'])} services, one request. "
+            "footer": f"{len(out['steps'])} steps, one request. "
                       "Rides are a sandbox provider."},
             steps=out["steps"], appointment=a["id"])
 
