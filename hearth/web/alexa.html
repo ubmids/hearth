@@ -388,7 +388,7 @@ async function converse(who, said, opts = {}) {
     if (!res) continue;
     spoken.push((res.content[0] || {}).text || "");
     const sc = res.structuredContent || {};
-    if (sc.checkout_session && sc.status === "ready_for_complete") checkout = sc.checkout_session;
+    if (sc.checkout && sc.approved) checkout = sc.checkout;
     if (sc.card && sc.card.tone === "stop") tone = "stop";
     if (sc.card) showResult(res);
   }
@@ -397,27 +397,42 @@ async function converse(who, said, opts = {}) {
   await speak(reply, "alexa");
 }
 
-// Alexa+ owns payment. The add-on only opens a checkout session; the host
-// confirms with the customer and completes it. This is that host step,
-// simulated, against Hearth's UCP-shaped endpoint and a sandbox merchant.
-async function payCheckout(id) {
-  if (!id) return "There is nothing waiting to be paid for.";
-  turn("host", "", "Simulated Alexa+ checkout: confirmed by voice, Amazon card ending 4242, sandbox merchant.");
-  const key = "idem-" + id;
-  const {r, ms} = await http("POST", `/checkout-sessions/${id}/complete`, {
-    headers: {Authorization: "Bearer " + token, "Idempotency-Key": key,
-              "UCP-Agent": 'profile="simulated-alexa-plus"'}, label: `POST /checkout-sessions/…/complete`});
-  const s = await r.json();
-  log(r.ok ? "res" : "res err", `${r.status} · ${ms} ms`, `${s.status} ${s.order_id || s.error || ""}`, s);
+// Alexa+ owns payment, as its checkout docs lay out: the add-on's tool prices
+// the order and its MCP App offers Pay; on yes (or a tap, which arrives as
+// ui/message "Pay for this order") Alexa+ creates the checkout session itself,
+// collects the voice PIN and card, and completes it. This is that host step,
+// simulated, against Hearth's UCP endpoints and a sandbox merchant.
+const UCP_HEADERS = () => ({Authorization: "Bearer " + token, "UCP-Agent": 'profile="simulated-alexa-plus"',
+  "Request-Id": "req-" + Math.random().toString(16).slice(2, 10)});
+async function payCheckout(hint) {
+  if (!hint) return "There is nothing waiting to be paid for.";
   checkout = null;
-  if (!r.ok) return "I could not place that order.";
+  let {r, ms} = await http("POST", "/checkout-sessions", {
+    headers: {...UCP_HEADERS(), "Idempotency-Key": "create-" + hint.quote},
+    body: {line_items: hint.line_items, buyer: {first_name: speaker},
+           context: {language: "en-US", address_country: "US", hearth_quote: hint.quote}},
+    label: "POST /checkout-sessions (UCP)"});
+  let s = await r.json();
+  log(r.ok ? "res" : "res err", `${r.status} · ${ms} ms`, `${s.status} ${s.id || s.error || ""}`, s);
+  if (!r.ok || s.status !== "ready_for_complete")
+    return ((s.messages || [])[0] || {}).content || "I could not start that checkout.";
+  turn("host", "", "Simulated Alexa+ checkout: voice PIN accepted, Amazon card ending 4242, sandbox merchant.");
+  ({r, ms} = await http("POST", `/checkout-sessions/${s.id}/complete`, {
+    headers: {...UCP_HEADERS(), "Idempotency-Key": "complete-" + s.id},
+    body: {payment: {instruments: [{handler_id: "amazon_pay_network_token", type: "card",
+           credential: {type: "network_token", token: "sandbox-token"}}]}},
+    label: "POST /checkout-sessions/…/complete (UCP)"}));
+  s = await r.json();
+  log(r.ok && s.status === "completed" ? "res" : "res err", `${r.status} · ${ms} ms`, `${s.status} ${s.order_id || ""}`, s);
+  if (s.status !== "completed") return ((s.messages || [])[0] || {}).content || "I could not place that order.";
   const total = (s.totals.find(t => t.type === "total").amount / 100).toFixed(2);
   showResult({structuredContent: {card: {pattern: "card", tone: "ok", eyebrow: "Order placed · sandbox",
     title: s.line_items[0].item.title, body: `$${total} · arriving tomorrow`,
     items: [{label: "Order", detail: s.order_id, status: "done"},
             {label: "Family board", detail: "Everyone has been told.", status: "done"}],
     footer: "Paid through simulated Alexa+ checkout"}}});
-  return `Done. ${s.line_items[0].item.title} is ordered, ${total} dollars, arriving tomorrow. I've told the family.`;
+  const [dollars, cents] = total.split(".");
+  return `Done. ${s.line_items[0].item.title} is ordered, ${dollars} dollars ${cents}, arriving tomorrow. I've told the family.`;
 }
 
 // --- people, script, input --------------------------------------------------

@@ -554,22 +554,36 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
     # This is a sandbox merchant: nothing is charged and nothing ships.
     @app.get("/.well-known/ucp")
     async def ucp_profile():
-        return {"merchant": carelib.PHARMACY, "sandbox": True,
-                "capabilities": {"checkout": {
-                    "endpoint": f"{issuer}/checkout-sessions",
-                    "operations": ["create", "get", "update", "complete", "cancel"]}},
-                "payment_handlers": ["com.amazon.payments.network_token"],
-                "currency": "USD"}
+        return {"ucp": {"version": carelib.UCP_VERSION,
+                        "services": {"dev.ucp.shopping": {
+                            "version": carelib.UCP_VERSION,
+                            "rest": {"endpoint": issuer}}},
+                        "capabilities": {"dev.ucp.shopping.checkout": [
+                            {"version": carelib.UCP_VERSION}]}},
+                "payment_handlers": {"com.amazon.payments.network_token": [
+                    {"id": "amazon_pay_network_token",
+                     "version": carelib.UCP_VERSION}]},
+                "merchant": carelib.PHARMACY, "sandbox": True}
 
     def _caller_home(request: Request):
         tok = auth.verify(request.headers.get("authorization"))
         return home_for(tok.subject) if tok else None
 
-    def _receipt(srv, op, sess, outcome="ok"):
+    def _ucp(request: Request, body, status=200):
+        # Checkout state must never be cached, and the Request-Id comes back
+        # so a support escalation can find the call in both sets of logs.
+        h = {"Cache-Control": "no-store"}
+        if request.headers.get("request-id"):
+            h["Request-Id"] = request.headers["request-id"]
+        return JSONResponse(body, status_code=status, headers=h)
+
+    def _receipt(srv, op, sess, outcome="ok", request=None):
         # Checkout calls are not MCP tool calls, and they are the calls that
         # move money, so they go on the same record as everything else.
         srv.trace.append(tool=f"checkout.{op}",
-                         args={"session": sess["id"] if sess else None},
+                         args={"session": sess["id"] if sess else None,
+                               "request_id": request.headers.get("request-id")
+                               if request else None},
                          outcome=outcome,
                          summary=(f"{sess['status']} {sess['id']}" if sess else op),
                          writes=[sess["id"]] if sess else [])
@@ -579,20 +593,18 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         home = _caller_home(request)
         if home is None:
             return _unauthorized()
-        h, led, srv = home
+        srv = home[2]
         body = await request.json()
-        li = (body.get("line_items") or [{}])[0]
-        item_id = (li.get("item") or {}).get("id", "")
-        name = next((k for k, v in carelib.CATALOG.items() if v["id"] == item_id),
-                    item_id)
+        buyer = body.get("buyer") or {}
         try:
-            sess = srv.care.reorder(name, body.get("buyer") or "someone",
-                                    li.get("quantity") or 1)
-        except ValueError as e:
-            return JSONResponse({"error": "invalid_item", "message": str(e)},
-                                status_code=400)
-        _receipt(srv, "create", sess)
-        return JSONResponse(sess, status_code=201)
+            sess = srv.care.create_session(
+                body.get("line_items"),
+                buyer=buyer.get("first_name") if isinstance(buyer, dict) else buyer,
+                quote_id=(body.get("context") or {}).get("hearth_quote"))
+        except (ValueError, TypeError) as e:
+            return _ucp(request, {"error": "invalid_request", "message": str(e)}, 400)
+        _receipt(srv, "create", sess, request=request)
+        return _ucp(request, sess, 201)
 
     @app.get("/checkout-sessions/{sid}")
     async def checkout_get(sid: str, request: Request):
@@ -600,7 +612,32 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         if home is None:
             return _unauthorized()
         sess = next((c for c in home[2].care.book.checkouts if c["id"] == sid), None)
-        return sess or JSONResponse({"error": "not_found"}, status_code=404)
+        return _ucp(request, sess) if sess else _ucp(request, {"error": "not_found"}, 404)
+
+    @app.put("/checkout-sessions/{sid}")
+    async def checkout_update(sid: str, request: Request):
+        """Full-resource replace. Hearth's sessions have nothing a buyer can
+        change but the quantity, so an update is a fresh pricing of the new
+        line items under the same id, with the family's rules applied again."""
+        home = _caller_home(request)
+        if home is None:
+            return _unauthorized()
+        srv = home[2]
+        book = srv.care.book
+        old = next((c for c in book.checkouts if c["id"] == sid), None)
+        if old is None:
+            return _ucp(request, {"error": "not_found"}, 404)
+        if old["status"] == "completed":
+            return _ucp(request, old)
+        body = await request.json()
+        fresh = srv.care.create_session(body.get("line_items") or old["line_items"],
+                                        buyer=old["buyer"], quote_id=old.get("quote"))
+        book.checkouts.remove(fresh)
+        fresh["id"], fresh["created_at"] = old["id"], old["created_at"]
+        book.checkouts[book.checkouts.index(old)] = fresh
+        book.save()
+        _receipt(srv, "update", fresh, request=request)
+        return _ucp(request, fresh)
 
     @app.post("/checkout-sessions/{sid}/complete")
     async def checkout_complete(sid: str, request: Request):
@@ -610,11 +647,10 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         srv = home[2]
         sess, err = srv.care.complete(sid, request.headers.get("idempotency-key"))
         if err == "not_found":
-            return JSONResponse({"error": "not_found"}, status_code=404)
-        _receipt(srv, "complete", sess, "refused" if err else "ok")
-        if err:
-            return JSONResponse({**sess, "error": err}, status_code=409)
-        return sess
+            return _ucp(request, {"error": "not_found"}, 404)
+        _receipt(srv, "complete", sess, "refused" if err else "ok", request)
+        # A business failure is still a 200 with the reason in messages[].
+        return _ucp(request, sess)
 
     @app.post("/checkout-sessions/{sid}/cancel")
     async def checkout_cancel(sid: str, request: Request):
@@ -624,9 +660,9 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         srv = home[2]
         sess, err = srv.care.cancel(sid)
         if err == "not_found":
-            return JSONResponse({"error": "not_found"}, status_code=404)
-        _receipt(srv, "cancel", sess, "refused" if err else "ok")
-        return JSONResponse(sess, status_code=409 if err else 200)
+            return _ucp(request, {"error": "not_found"}, 404)
+        _receipt(srv, "cancel", sess, "refused" if err else "ok", request)
+        return _ucp(request, sess)
 
     # The add-on manifest requires HTTPS URLs for six icons, a carousel image,
     # a privacy policy and terms of use. Serving them from the service itself

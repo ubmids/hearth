@@ -53,14 +53,20 @@ When `when` is a time, prefer ISO 8601 in the household's local time
 
 ## Paying
 
-`reorder` never charges anything. It returns a checkout session
-(`structuredContent.checkout_session`) with status `ready_for_complete`, or
-`incomplete` with a message saying who must approve it (the family's spending
-limit). Read the price and the merchant aloud and get an explicit yes. Payment
-itself is the host's job: on Alexa+, the customer confirms through Alexa's own
-checkout, which completes `POST /checkout-sessions/{id}/complete` with an
-`Idempotency-Key`. Do not use a tool call to pay. If the session carries a
-`possible_duplicate` warning, say it before asking for confirmation.
+`reorder` never charges anything and opens nothing at the merchant. It prices
+the order, applies the family's rules (the spending limit, who may go over it,
+an order already placed this week) and returns:
+
+- `structuredContent.approved`: whether the order can go ahead,
+- `structuredContent.checkout`: the line items by catalogue id and a quote id,
+- a card whose Pay button sends `ui/message` "Pay for this order".
+
+Read the price and the merchant aloud and get an explicit yes. If there is a
+`possible_duplicate` warning, say it first. If it is not approved, say who has
+to approve it and stop. Payment itself is the host's job: Alexa+ creates the
+session (`POST /checkout-sessions` with those line items, and the quote id in
+`context.hearth_quote`), collects the voice PIN and card, and completes it with
+an `Idempotency-Key`. Do not use a tool call to pay.
 
 ## Saying it
 

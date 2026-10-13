@@ -58,6 +58,7 @@ CATALOG = {
 }
 
 PHARMACY = "Hearth sandbox pharmacy"
+UCP_VERSION = "2026-04-08"
 RIDES = "Hearth sandbox rides"
 
 
@@ -159,7 +160,7 @@ def parse_when(text, now: float | None = None) -> float | None:
 
 # --- the books ------------------------------------------------------------
 class CareBook:
-    KINDS = ("doses", "appointments", "rides", "board", "checkouts")
+    KINDS = ("doses", "appointments", "rides", "board", "quotes", "checkouts")
 
     def __init__(self, store=None):
         self.store = store
@@ -384,96 +385,166 @@ class Care:
         return {"appointment": appt, "ride": ride, "escort": escort,
                 "steps": steps, "person": who}
 
-    # --- the pharmacy: a checkout, never a silent charge -------------------
-    def reorder(self, item, asked_by, quantity=1, person=None, now=None) -> dict:
-        """Open a checkout session for a refill. It does not pay.
+    # --- the pharmacy: a quote here, a checkout there, never a silent charge --
+    #
+    # The Alexa+ payments model, followed as documented: the add-on's tool
+    # prepares the purchase and its MCP App offers a "Pay" button; that button
+    # sends `ui/message` "Pay for this order"; Alexa+ then creates the checkout
+    # session itself (POST /checkout-sessions, line_items carrying item ids as
+    # hints), collects the voice PIN and the card, and completes it (POST
+    # /checkout-sessions/{id}/complete). The merchant's backend owns price,
+    # availability and every business rule. Hearth's rules are the family's:
+    # the spending limit, who may go over it, and an order already on its way.
 
-        Alexa+ owns payment: the add-on exposes checkout sessions and Alexa
-        collects the confirmation and the card. So the tool's job is to build a
-        correct session, check it against the household's rules (the spending
-        limit, who may approve more, an order already on its way) and hand it
-        over. Completing it happens at /checkout-sessions/{id}/complete.
-        """
-        now = now or time.time()
+    def _sku(self, item):
         key = med_name(item)
         entry = CATALOG.get(key) or next(
-            (v for k, v in CATALOG.items() if k in str(item).lower()), None)
+            (v for k, v in CATALOG.items()
+             if k in str(item).lower() or v["id"] == str(item)), None)
         if entry is None:
             raise ValueError(f"the sandbox pharmacy does not stock {item!r}")
-        who = self.person(person)
-        asker = self._name(asked_by)
-        quantity = max(1, int(quantity or 1))
+        return entry
+
+    def _house_rules(self, entry, quantity, asked_by, now):
+        """(messages, limit resolution) for buying this, by this person, now."""
         total = entry["price"] * quantity
         messages = []
-
-        # A duplicate is the transaction version of a double dose.
         recent = [c for c in self.book.checkouts
                   if c["status"] == "completed" and now - c["completed_at"] < 7 * 86400
                   and any(li["item"]["id"] == entry["id"] for li in c["line_items"])]
         if recent:
+            # A duplicate is the transaction version of a double dose.
             messages.append({"type": "warning", "code": "possible_duplicate",
                              "content": f"{entry['title']} was already ordered "
                                         f"{when_said(recent[-1]['completed_at'], now)} "
-                                        f"by {recent[-1]['buyer']}."})
-
+                                        f"by {recent[-1]['buyer']}.",
+                             "severity": "requires_buyer_review"})
         limit_r = self.h.resolve("purchases", "limit", now=now,
                                  name_domain=phrasing.domain_label)
         limit = (float(str(limit_r.winner.value).lstrip("$")) * 100
                  if limit_r.winner else None)
-        asker_m = self.h.member_named(asked_by)
+        asker = self.h.member_named(asked_by) if asked_by else None
         approver = next((m for m in self.h.members.values()
                          if m.authority_over("purchases") >= 100), None)
-        can_approve = bool(asker_m and asker_m.authority_over("purchases") >= 100)
-        if limit is not None and total > limit and not can_approve:
+        if (limit is not None and total > limit
+                and not (asker and asker.authority_over("purchases") >= 100)):
             messages.append({"type": "error", "code": "requires_approval",
                              "content": f"That is over the "
                                         f"{phrasing.spoken('purchases', 'limit', limit_r.winner.value)} "
-                                        f"{limit_r.winner and self.h.name_of(limit_r.winner.holder)} "
+                                        f"{self.h.name_of(limit_r.winner.holder)} "
                                         f"allows without asking. "
                                         f"{approver.name if approver else 'Someone'} "
-                                        f"has to approve it."})
+                                        f"has to approve it.",
+                             "severity": "requires_buyer_input"})
+        return messages, limit_r
+
+    def reorder(self, item, asked_by, quantity=1, person=None, now=None) -> dict:
+        """Prepare a refill: price it and check it against the family's rules.
+
+        Nothing is created at the merchant and nothing is charged. The quote
+        is remembered so that the checkout Alexa+ opens from it carries who
+        asked, which is what decides whether it may go over the limit.
+        """
+        now = now or time.time()
+        entry = self._sku(item)
+        who = self.person(person)
+        asker = self._name(asked_by)
+        quantity = max(1, int(quantity or 1))
+        total = entry["price"] * quantity
+        messages, limit_r = self._house_rules(entry, quantity, asked_by, now)
+        approved = not any(m["type"] == "error" for m in messages)
+        quote = {"id": _id("q"), "sku": entry["id"], "title": entry["title"],
+                 "quantity": quantity, "price": entry["price"], "total": total,
+                 "asked_by": asker, "for": who.id if who else None,
+                 "approved": approved, "messages": messages, "at": now}
+        self.book.quotes.append(quote)
+        self.book.save()
+        self.ledger.record(
+            f"priced {entry['title']} at ${total / 100:.2f} for {asker}"
+            + ("" if approved else ", which needs approval"), "purchases",
+            resolution=limit_r if limit_r.winner else None, by=asker,
+            source="hearth", at=now, outcome="done" if approved else "refused")
+        return quote
+
+    def _session(self, entry, quantity, buyer, messages, now, quote=None):
+        total = entry["price"] * quantity
         status = ("incomplete" if any(m["type"] == "error" for m in messages)
                   else "ready_for_complete")
-        session = {
-            "id": _id("chk"), "status": status, "currency": "USD",
+        return {
+            "id": _id("cs"), "status": status, "currency": "USD",
             "line_items": [{"id": _id("li"), "quantity": quantity,
                             "item": {"id": entry["id"], "title": entry["title"],
                                      "price": entry["price"]},
-                            "totals": [{"type": "subtotal", "amount": total}]}],
+                            "totals": [{"type": "subtotal", "amount": total},
+                                       {"type": "total", "amount": total}]}],
             "totals": [{"type": "subtotal", "amount": total},
-                       {"type": "fulfillment", "amount": 0},
+                       {"type": "shipping", "amount": 0},
+                       {"type": "tax", "amount": 0},
                        {"type": "total", "amount": total}],
-            "fulfillment": {"type": "delivery", "estimate": "tomorrow",
-                            "to": who.name if who else None},
-            "merchant": PHARMACY, "sandbox": True,
-            "messages": messages, "buyer": asker, "for": who.id if who else None,
+            "ucp": {"version": UCP_VERSION,
+                    "capabilities": {"dev.ucp.shopping.checkout": [{"version": UCP_VERSION}]},
+                    "payment_handlers": {"com.amazon.payments.network_token": [{
+                        "id": "amazon_pay_network_token", "version": UCP_VERSION,
+                        "available_instruments": [{"type": "card", "constraints": {
+                            "brands": ["visa", "mastercard"]}}]}]}},
+            "messages": messages,
+            "links": [{"type": "terms_of_use", "title": "Sandbox merchant terms",
+                       "url": "/terms"}],
+            "expires_at": datetime.fromtimestamp(now + 3600, ZoneInfo("UTC"))
+                                  .strftime("%Y-%m-%dT%H:%M:%SZ"),
+            # Hearth's own fields, outside the UCP shape.
+            "merchant": PHARMACY, "sandbox": True, "buyer": buyer,
+            "quote": quote["id"] if quote else None,
             "created_at": now, "completed_at": None, "order_id": None,
+            "idempotency": {},
         }
-        self.book.checkouts.append(session)
+
+    def create_session(self, line_items, buyer=None, quote_id=None, now=None) -> dict:
+        """POST /checkout-sessions. Price comes from the catalog, never the
+        request; the family's rules are applied again, on the quote's asker
+        when the session came from one."""
+        now = now or time.time()
+        li = (line_items or [{}])[0]
+        entry = self._sku((li.get("item") or {}).get("id", ""))
+        quantity = max(1, int(li.get("quantity") or 1))
+        quote = next((q for q in self.book.quotes if q["id"] == quote_id
+                      and q["sku"] == entry["id"] and q["quantity"] == quantity),
+                     None)
+        asker = quote["asked_by"] if quote else buyer
+        messages, _ = self._house_rules(entry, quantity, asker, now)
+        s = self._session(entry, quantity, asker or "the account holder", messages,
+                          now, quote)
+        self.book.checkouts.append(s)
         self.book.save()
-        self.ledger.record(
-            f"opened a {PHARMACY} checkout for {entry['title']}, "
-            f"${total / 100:.2f}", "purchases",
-            resolution=limit_r if limit_r.winner else None, by=asker,
-            source="hearth", at=now,
-            outcome="done" if status == "ready_for_complete" else "refused")
-        return session
+        return s
 
     def complete(self, session_id, idempotency_key=None, now=None) -> tuple[dict | None, str | None]:
+        """POST /checkout-sessions/{id}/complete.
+
+        Business failures come back as the session with an error in
+        `messages[]` (HTTP 200, as the Alexa+ contract asks); only protocol
+        problems are errors. A repeated Idempotency-Key gets the stored result.
+        """
         now = now or time.time()
         s = next((c for c in self.book.checkouts if c["id"] == session_id), None)
         if s is None:
             return None, "not_found"
+        if idempotency_key and idempotency_key in s.get("idempotency", {}):
+            return s, None
         if s["status"] == "completed":
-            # Idempotent: the same key, or a retry of the same session, gets the
-            # same order back and never a second charge.
+            # Never a second charge for one session, whatever the key.
             return s, None
         if s["status"] != "ready_for_complete":
+            if not any(m.get("code") == "not_ready" for m in s["messages"]):
+                s["messages"].append({"type": "error", "code": "not_ready",
+                                      "content": "This checkout cannot be completed.",
+                                      "severity": "requires_buyer_input"})
             return s, "not_ready"
         s["status"] = "completed"
         s["completed_at"] = now
         s["order_id"] = _id("ord")
-        s["idempotency_key"] = idempotency_key
+        if idempotency_key:
+            s["idempotency"][idempotency_key] = s["order_id"]
         title = s["line_items"][0]["item"]["title"]
         total = next(t["amount"] for t in s["totals"] if t["type"] == "total")
         self.book.post(f"{s['buyer']} ordered {title} (${total / 100:.2f}), "
@@ -481,7 +552,7 @@ class Care:
                        by=s["buyer"], now=now)
         self.book.save()
         self.ledger.record(f"ordered {title} for ${total / 100:.2f} "
-                           f"({PHARMACY}, confirmed by {s['buyer']})", "purchases",
+                           f"({PHARMACY}, paid through Alexa+ checkout)", "purchases",
                            by=s["buyer"], source="hearth", at=now)
         return s, None
 

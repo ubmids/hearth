@@ -712,31 +712,34 @@ class HearthMCP:
             steps=out["steps"], appointment=a["id"])
 
     def _tool_reorder(self, item, asked_by, quantity=1):
-        sess = self.care.reorder(item, asked_by, quantity, now=self._now)
-        li = sess["line_items"][0]
-        total = next(t["amount"] for t in sess["totals"] if t["type"] == "total")
-        price = f"${total / 100:.2f}"
-        errors = [m for m in sess["messages"] if m["type"] == "error"]
-        warns = [m for m in sess["messages"] if m["type"] == "warning"]
+        q = self.care.reorder(item, asked_by, quantity, now=self._now)
+        price = f"${q['total'] / 100:.2f}"
+        errors = [m for m in q["messages"] if m["type"] == "error"]
+        warns = [m for m in q["messages"] if m["type"] == "warning"]
         if errors:
-            line = f"{li['item']['title']} is {price}. {errors[0]['content']}"
+            line = f"{q['title']} is {price}. {errors[0]['content']}"
         else:
-            line = (f"{li['item']['title']}, {price} from the {carelib.PHARMACY}, "
+            line = (f"{q['title']}, {price} from the {carelib.PHARMACY}, "
                     f"delivered tomorrow."
                     + (f" Note: {warns[0]['content']}" if warns else "")
                     + " Shall I place the order?")
         card = {"pattern": "card", "tone": "stop" if errors else
                 ("warn" if warns else "info"),
-                "eyebrow": "Pharmacy · sandbox", "title": li["item"]["title"],
+                "eyebrow": "Pharmacy · sandbox", "title": q["title"],
                 "body": price + " · delivered tomorrow",
                 "items": [{"label": m["type"].title(), "detail": m["content"],
                            "status": "lost" if m["type"] == "error" else "info"}
-                          for m in sess["messages"]]}
+                          for m in q["messages"]]}
+        # What Alexa+ needs to open the checkout itself when the customer says
+        # yes or taps Pay: the line items, by catalogue id, and the quote they
+        # came from. The price is not passed; the merchant owns it.
+        checkout = {"line_items": [{"item": {"id": q["sku"]}, "quantity": q["quantity"]}],
+                    "quote": q["id"]}
         if not errors:
             card["cta"] = {"label": f"Pay {price}", "message": "Pay for this order",
-                           "checkout": sess["id"]}
-        return _text(line, card, checkout_session=sess["id"],
-                     status=sess["status"])
+                           "checkout": checkout}
+        return _text(line, card, checkout=checkout, approved=not errors,
+                     total=q["total"], currency="USD")
 
     def _tool_catch_up(self, person):
         # When this person last talked to the house: the last call made on

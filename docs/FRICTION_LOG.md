@@ -5,9 +5,13 @@ is something that actually cost time on this build, in the format the hackathon
 rules ask for: task attempted, steps taken, expected versus actual, severity,
 workaround, suggestion.
 
-Entries are ordered by how much they would cost a developer who hits them cold.
-Nothing here is hypothetical; each one is reproducible from this repository, and
-the tests that pin the resolved behaviour are named where they exist.
+Entries 1 to 4 come from the first build (transport and OAuth). Entries 5 to 10
+come from the October rebuild around a care household, when Hearth added MCP
+Apps visuals, a checkout, cross-session memory and a simulated Alexa+ client,
+and every one of them is a place where the Alexa+ add-on documentation and the
+thing being built disagreed or went quiet. Source pages are linked. Two entries
+about the hackathon's track structure, rather than the developer platform, are
+kept separately at the end.
 
 ---
 
@@ -133,7 +137,184 @@ three requests with real values filled in.
 
 ---
 
-## 5. The Ring track is presented as open but gated behind partner approval
+## 5. The Alexa+ add-on tools are partner-only, and the setup guides do not say so
+
+**Severity: high.** It decides what a developer can test at all, and it is
+discovered late.
+
+**Task attempted.** Register Hearth as an add-on and test it end to end in the
+Alexa+ Web Simulator.
+
+**Steps taken.** Followed the MCP Toolkit quickstart, which walks through
+`alexa-ai new mcp`, `alexa-ai deploy` and testing in the Web Simulator. Our own
+spec, written from that page in September, records the spike as "green, no
+device needed … testable in the web simulator".
+
+**Expected.** That a quickstart is something a developer can start.
+
+**Actual.** The Category SDK, MCP Toolkit, CLI and Web Simulator are "in preview
+and available to select partners only - there is currently no way for hackathon
+participants to apply for or gain access". The hackathon FAQ says so, and adds
+that this "is called out on Amazon's add-on docs home page, though it's
+sometimes missing from individual setup-guide pages, which has caused some
+confusion" ([FAQ](https://amazonappdev2026.devpost.com/details/faqs)). That is
+exactly what happened here: the plan for the demo video assumed a simulator
+that cannot be reached.
+
+**Workaround.** Built a clearly labelled simulated Alexa+ client (`/alexa`) that
+is a real MCP client: OAuth 2.1 + PKCE, initialize, tools/list, resources/read
+for the MCP App, tools/call, all over Streamable HTTP, with the traffic on
+screen.
+
+**Suggestion.** Put the availability banner on every setup page, not only the
+docs home. Better: publish a conformance harness (or a stripped-down public
+simulator) that exercises the MCP handshake, the OAuth flow and MCP Apps
+rendering without the gated pieces. Most of what a developer needs to check is
+protocol, and protocol does not need to be gated.
+
+---
+
+## 6. Where `_meta.ui.resourceUri` goes: the Alexa+ docs and the MCP Apps spec disagree
+
+**Severity: medium.** Silent: the wrong placement means plain text instead of
+the card, with no error.
+
+**Task attempted.** Return rich visuals for screen devices.
+
+**Steps taken.** The quickstart says "If you expect to provide visuals, follow
+the MCP Apps standard". The MCP Apps specification (SEP-1865, stable
+2026-01-26) declares the view on the **tool definition**:
+`_meta.ui.resourceUri` alongside `inputSchema`. The Alexa+ client lifecycle page
+says "Alexa+ renders your custom visuals for your MCP App UI as long as you have
+resourceUri defined in the **tool response**", and its example puts
+`_meta.ui.resourceUri` on the result, with two extra keys, `invoking` and
+`invoked`, that are not in the MCP Apps spec
+([client lifecycle](https://developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-client-lifecycle.html)).
+
+**Expected.** One place, matching the standard the docs point to.
+
+**Actual.** Two places, and two undocumented keys. Without access to Alexa+
+(entry 5) there is no way to find out which one it actually reads.
+
+**Workaround.** Set it in both places; leave `invoking`/`invoked` out until they
+are defined. Pinned by
+`tests/test_care.py::test_tools_name_their_view_and_the_view_is_served_as_an_mcp_app`.
+
+**Suggestion.** State that Alexa+ reads the tool definition per the MCP Apps
+spec (or that it reads both), and either define `invoking`/`invoked` or remove
+them from the example.
+
+---
+
+## 7. The lifecycle example negotiates protocol 2025-03-26, while the requirement is 2025-11-25
+
+**Severity: medium.** A developer who copies the example ships the wrong
+version string, and the version is the one thing Stage One checks.
+
+**Steps taken.** Compared the client lifecycle page's example exchange with the
+requirement on the quickstart and in the hackathon rules.
+
+**Actual.** The example's `initialize` shows `"protocolVersion": "2025-03-26"`
+(twice), the release in which Streamable HTTP was introduced, while the
+quickstart and the rules require 2025-11-25.
+
+**Workaround.** Hearth answers `2025-11-25` on `initialize` and in the
+`MCP-Protocol-Version` header, asserted in `tests/test_conformance.py`.
+
+**Suggestion.** Update the example to 2025-11-25, and say what Alexa+ does when
+a server answers with an older version (refuse, or downgrade).
+
+---
+
+## 8. Alexa+ does not tell an add-on who is speaking
+
+**Severity: high for any household add-on.** It moves a trust decision from
+the platform to the language model.
+
+**Task attempted.** Apply a family's authority rules: Ada holds her mother's
+health care proxy, so her rule about medication stands over her brother's.
+
+**Steps taken.** Looked for a speaker or person identifier in the request,
+`_meta`, headers or the permissions model.
+
+**Expected.** Alexa already recognises voices in a household, so some opaque
+per-person identifier on the call.
+
+**Actual.** The only identity that reaches the server is the OAuth bearer token,
+which is the account, not the person. The functional requirements say to
+"verify each household member's data stays isolated", but there is no
+documented way to tell household members apart
+([functional requirements](https://developer.amazon.com/docs/alexaplus/add-ons/functional-requirements.html)).
+
+**Workaround.** Every Hearth tool that depends on who is talking takes the name
+as an argument (`speaker`, `asked_by`, `given_by`), and the tool descriptions
+and the Agent Skill tell the model to ask when it does not know. That works,
+and it means a rule about who may change a medication schedule rests on the
+model's reading of who spoke.
+
+**Suggestion.** Pass an opaque, stable, per-recognised-voice identifier (and a
+confidence) in `_meta`, behind a customer permission. It need not be a name;
+an add-on can map it to one.
+
+---
+
+## 9. Payments: the rules are clear, the hand-off cannot be tried
+
+**Severity: medium.**
+
+**Task attempted.** Let the family reorder a prescription inside a spending
+limit.
+
+**Steps taken.** Read the payments pages: Alexa+ owns the checkout experience;
+the add-on implements Universal Commerce Protocol checkout sessions
+(`POST /checkout-sessions`, `…/{id}/complete`, `…/cancel`) declared in
+`/.well-known/ucp`; an MCP App triggers payment with a `ui/message` ("Pay for
+this order"), and "Don't use tools/call for payment actions".
+
+**Expected.** A sandbox payment handler, or a way to see the `UCP-Agent`,
+`Idempotency-Key` and completion calls Alexa would make.
+
+**Actual.** All of it sits behind the gated toolkit (entry 5). The pages also
+do not say how a voice-only device, which has no MCP App to send `ui/message`,
+starts the payment.
+
+**Workaround.** Implemented the session endpoints to the documented shape
+(sandbox merchant, idempotent completion, spending-limit and duplicate checks),
+and had the simulated client play the host's part. Covered in
+`tests/test_care.py`.
+
+**Suggestion.** A public sandbox for the UCP hand-off, and one sentence on the
+voice-only trigger.
+
+---
+
+## 10. Tool annotations: required confirmation is described, the link to MCP's hints is not
+
+**Severity: low to medium.**
+
+**Steps taken.** The functional requirements say to "require explicit
+confirmation with key details before any high-consequence action" and to
+"detect and prevent duplicate transactions". MCP 2025-11-25 already has
+`readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`.
+
+**Actual.** The add-on docs never mention the annotations, so it is unclear
+whether Alexa+ uses them to decide when to confirm, or ignores them.
+
+**Workaround.** Hearth sets them on all 14 tools and enforces the consequential
+refusals (a second dose, an order over the limit) in server code, since the MCP
+spec says clients must treat annotations as untrusted anyway.
+
+**Suggestion.** Say whether Alexa+ reads tool annotations, and which ones
+trigger a confirmation turn.
+
+---
+
+## About the hackathon, not the platform
+
+These two cost planning time rather than build time, and are kept apart so the
+platform entries above are read first.
+
+### A. The Ring track is presented as open but gated behind partner approval
 
 **Severity: medium**, and it is a planning cost rather than a coding one.
 
@@ -158,7 +339,7 @@ rather than discovering they cannot.
 
 ---
 
-## 6. The Bee track's device requirement contradicts the general device rule
+### B. The Bee track's device requirement contradicts the general device rule
 
 **Severity: low to medium.**
 
@@ -175,12 +356,25 @@ rule, or add "except Bee" to it.
 
 ---
 
+### C. Whether the server must stay up through judging
+
+The FAQ says the MCP server "doesn't need to stay running after you submit"; an
+organiser's forum answer says it "needs to be live and accessible till the end
+of the judging period". We are planning for the second.
+
+---
+
 ## What went well, since a friction log that only complains is not useful
 
 - The MCP toolkit quickstart is concrete about the OAuth requirements. The
   `code_challenge_methods_supported` requirement in particular is stated as a
   must-be-present rather than left to a default, which caught a real omission.
 - Accepting a simulated Alexa+ experience as an alternative to a registered
-  add-on means the track is genuinely startable on day one, unlike Ring and Bee.
+  add-on means the track is genuinely startable on day one, unlike Ring and Bee,
+  and the FAQ is unusually direct about why it is needed.
+- Pointing at the MCP Apps standard for visuals, rather than inventing an
+  Alexa-only format, meant the same card renders in any MCP Apps host. The
+  layout guide (768x480 canvas, one self-contained file, content hash in the
+  URI, Card/List/Carousel/Map only) was specific enough to build to blind.
 - Naming the spec version (2025-11-25) rather than "the latest" removed all
   ambiguity about which transport to implement.

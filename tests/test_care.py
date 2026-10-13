@@ -259,38 +259,69 @@ def test_arrange_reminds_about_a_dose_due_during_the_trip():
 
 
 # --- purchases ---------------------------------------------------------------
-def test_a_refill_is_a_checkout_not_a_charge_and_completing_it_is_idempotent():
+def pay(house, hint, key="k1", buyer="Grace"):
+    """What Alexa+ does on "yes": create the session from the tool's hint,
+    then complete it, as its checkout contract describes."""
+    h = {"Authorization": f"Bearer {house.tok}", "UCP-Agent": 'profile="test"',
+         "Request-Id": "req-1"}
+    made = house.c.post("/checkout-sessions", headers=h, json={
+        "line_items": hint["line_items"], "buyer": {"first_name": buyer},
+        "context": {"hearth_quote": hint["quote"]}})
+    sess = made.json()
+    done = house.c.post(f"/checkout-sessions/{sess['id']}/complete",
+                        headers={**h, "Idempotency-Key": key}, json={})
+    return made, done
+
+
+def test_a_refill_is_priced_by_the_tool_and_paid_through_checkout():
     house = House()
     r = house.call("reorder", item="warfarin", asked_by="Grace")
-    sid = r["structuredContent"]["checkout_session"]
-    assert r["structuredContent"]["status"] == "ready_for_complete"
-    assert r["structuredContent"]["card"]["cta"]["message"] == "Pay for this order"
+    sc = r["structuredContent"]
+    assert sc["approved"] is True and sc["total"] == 1240
+    assert sc["card"]["cta"]["message"] == "Pay for this order"
+    assert sc["checkout"]["line_items"] == [{"item": {"id": "rx-warfarin-5mg-30"},
+                                             "quantity": 1}]
     assert "Shall I place the order?" in r["content"][0]["text"]
-    h = {"Authorization": f"Bearer {house.tok}", "Idempotency-Key": "k1"}
-    done = house.c.post(f"/checkout-sessions/{sid}/complete", headers=h).json()
-    assert done["status"] == "completed" and done["order_id"]
-    again = house.c.post(f"/checkout-sessions/{sid}/complete", headers=h).json()
-    assert again["order_id"] == done["order_id"]
-    assert [e.tool for e in house.server.trace.entries][-2:] == \
-        ["checkout.complete", "checkout.complete"]
+    # The tool charged nothing and opened nothing at the merchant.
+    assert house.server.care.book.checkouts == []
+    made, done = pay(house, sc["checkout"])
+    assert made.status_code == 201 and made.json()["status"] == "ready_for_complete"
+    assert made.headers["cache-control"] == "no-store"
+    assert made.headers["request-id"] == "req-1"
+    assert "com.amazon.payments.network_token" in made.json()["ucp"]["payment_handlers"]
+    order = done.json()
+    assert done.status_code == 200 and order["status"] == "completed" and order["order_id"]
+    # The same Idempotency-Key replays the result; never a second order.
+    again = house.c.post(f"/checkout-sessions/{order['id']}/complete",
+                         headers={"Authorization": f"Bearer {house.tok}",
+                                  "Idempotency-Key": "k1"}).json()
+    assert again["order_id"] == order["order_id"]
+    tools = [e.tool for e in house.server.trace.entries]
+    assert tools[-3:] == ["checkout.create", "checkout.complete", "checkout.complete"]
+    assert "paid through Alexa+ checkout" in house.home[1].actions[-1].what
     # A second refill within the week is flagged as a likely duplicate.
     r2 = house.call("reorder", item="warfarin", asked_by="Tom")
     assert "already ordered" in r2["content"][0]["text"], r2["content"][0]["text"]
-    print("PASS a refill is a checkout, idempotent, duplicates flagged")
+    print("PASS a refill is priced by the tool and paid through checkout")
 
 
 def test_spending_over_the_limit_needs_the_person_who_set_it():
     house = House()
     r = house.call("reorder", item="ensure", asked_by="Tom", quantity=2)
-    assert r["structuredContent"]["status"] == "incomplete"
+    sc = r["structuredContent"]
+    assert sc["approved"] is False
     assert "Ada has to approve it" in r["content"][0]["text"]
-    assert "cta" not in r["structuredContent"]["card"]
-    sid = r["structuredContent"]["checkout_session"]
-    res = house.c.post(f"/checkout-sessions/{sid}/complete",
-                       headers={"Authorization": f"Bearer {house.tok}"})
-    assert res.status_code == 409 and res.json()["error"] == "not_ready"
+    assert "cta" not in sc["card"]
+    # Alexa+ opening a checkout for it anyway gets an incomplete session, and
+    # completing that is a business failure: HTTP 200, reason in messages[].
+    made, done = pay(house, sc["checkout"], buyer="Tom")
+    assert made.json()["status"] == "incomplete"
+    assert done.status_code == 200 and done.json()["status"] == "incomplete"
+    assert any(m["code"] == "not_ready" for m in done.json()["messages"])
     ok = house.call("reorder", item="ensure", asked_by="Ada", quantity=2)
-    assert ok["structuredContent"]["status"] == "ready_for_complete"
+    assert ok["structuredContent"]["approved"] is True
+    made, done = pay(house, ok["structuredContent"]["checkout"], buyer="Ada", key="k2")
+    assert done.json()["status"] == "completed"
     print("PASS over the limit needs Ada")
 
 
@@ -301,12 +332,24 @@ def test_checkout_endpoints_need_a_bearer_and_publish_a_profile():
         "/checkout-sessions", json={}).headers
     prof = house.c.get("/.well-known/ucp").json()
     assert prof["sandbox"] is True
-    assert prof["capabilities"]["checkout"]["endpoint"].endswith("/checkout-sessions")
-    made = house.c.post("/checkout-sessions", json={
-        "line_items": [{"item": {"id": "rx-warfarin-5mg-30"}, "quantity": 1}],
-        "buyer": "Ada"}, headers={"Authorization": f"Bearer {house.tok}"})
-    assert made.status_code == 201 and made.json()["status"] == "ready_for_complete"
-    print("PASS checkout endpoints")
+    assert "dev.ucp.shopping.checkout" in prof["ucp"]["capabilities"]
+    h = {"Authorization": f"Bearer {house.tok}"}
+    made = house.c.post("/checkout-sessions", headers=h, json={
+        "line_items": [{"item": {"id": "rx-warfarin-5mg-30", "price": 1},
+                        "quantity": 1}]})
+    # The merchant owns the price: a price in the request is ignored.
+    assert made.status_code == 201 and made.json()["totals"][-1]["amount"] == 1240
+    sid = made.json()["id"]
+    up = house.c.put(f"/checkout-sessions/{sid}", headers=h, json={
+        "line_items": [{"item": {"id": "rx-warfarin-5mg-30"}, "quantity": 2}]}).json()
+    assert up["id"] == sid and up["totals"][-1]["amount"] == 2480
+    assert house.c.get(f"/checkout-sessions/{sid}", headers=h).json()["line_items"][0]["quantity"] == 2
+    gone = house.c.post(f"/checkout-sessions/{sid}/cancel", headers=h).json()
+    assert gone["status"] == "canceled"
+    bad = house.c.post("/checkout-sessions", headers=h, json={
+        "line_items": [{"item": {"id": "rx-nonsense"}}]})
+    assert bad.status_code == 400
+    print("PASS checkout endpoints follow the contract")
 
 
 # --- memory across sessions ------------------------------------------------

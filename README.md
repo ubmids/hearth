@@ -43,7 +43,7 @@ why.
 | **Remembers across sessions and devices** | Tom, on his own Echo Dot that evening: "What did I miss with Mom?" Hearth knows when he last talked to the house and tells him only what changed since, including the dose it stopped. |
 | **Settles disagreements, and says how** | Tom says Mom can have coffee till six; Ada said three because it keeps her up. "Mom's coffee stops at three. Tom said six, but Ada has the say over what she eats and drinks." |
 | **Lets situations end** | "No wine while she's on the antibiotics" holds until "Mom finished the antibiotics", then stops applying by itself. |
-| **Buys, the Alexa+ way** | "We're nearly out of her warfarin, reorder it" opens a checkout session (Universal Commerce Protocol shape) with the family's spending limit and duplicate-order check applied. Alexa+ confirms and pays; Hearth never charges anything itself. |
+| **Buys, the Alexa+ way** | "We're nearly out of her warfarin, reorder it" prices the refill against the family's spending limit and last week's orders, and offers Pay. Alexa+ then opens the checkout session on Hearth's Universal Commerce Protocol endpoints, takes the PIN and the card, and completes it. Hearth never charges anything itself. |
 | **Keeps an honest record** | Every tool call is written by the server as it happens, hash-chained, with what it read and wrote. If the assistant reports an action it never checked with Hearth first, "why did you do that?" says so. |
 | **Draws it on the screen** | Results carry an MCP Apps card (`ui://hearth/card-…`), sized for the Echo Show, and a complete spoken sentence for a speaker with no screen. |
 
