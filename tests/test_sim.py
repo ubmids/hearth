@@ -177,7 +177,7 @@ def test_the_simulator_endpoints_are_behind_the_bearer_and_say_what_they_are():
     tok = app.state.auth.issue_for_testing(subject="sim")
     h = {"Authorization": f"Bearer {tok}"}
     cfg = c.get("/sim/config", headers=h).json()
-    assert cfg["simulated"] is True and cfg["planner"] in ("rules", "model")
+    assert cfg["simulated"] is True and cfg["planner"] in ("rules", "model + skill:hearth-care")
     plan = c.post("/sim/plan", json={"said": "Alexa, what did I miss?",
                                      "speaker": "Tom"}, headers=h).json()
     assert plan["calls"] == [{"name": "catch_up", "arguments": {"person": "Tom"}}]
