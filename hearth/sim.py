@@ -105,6 +105,27 @@ PLANNER_SYSTEM = (
     "without a tool.")
 
 
+_SKILL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "skills", "hearth-care", "SKILL.md")
+
+
+def skill_instructions() -> str:
+    """The hearth-care Agent Skill's body, without its front matter.
+
+    An agent that uses Hearth is meant to load this skill; the simulated
+    Alexa+ loads it too, so the model standing in for Alexa's is taught the
+    same rules (pass the speaker, never soften a refusal, pay through the
+    host) as any other assistant would be."""
+    try:
+        with open(_SKILL, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return ""
+    if text.startswith("---"):
+        text = text.split("---", 2)[2]
+    return text.strip()
+
+
 def plan_model(said, speaker, tools, context=None):
     """Plan with any OpenAI-compatible model, using Hearth's own tool list.
 
@@ -127,7 +148,8 @@ def plan_model(said, speaker, tools, context=None):
                        headers={"Authorization": f"Bearer {key}"},
                        json={"model": model, "temperature": 0, "tools": fns,
                              "messages": [
-                                 {"role": "system", "content": PLANNER_SYSTEM},
+                                 {"role": "system", "content": PLANNER_SYSTEM
+                                  + "\n\n" + skill_instructions()},
                                  {"role": "user",
                                   "content": f"{speaker} says: {said}"}]},
                        timeout=12.0)
@@ -152,7 +174,7 @@ def plan(said, speaker, tools, context=None) -> dict:
     if calls:
         model = (os.getenv("HEARTH_SIM_LLM_MODEL") or os.getenv("HEARTH_LLM_MODEL")
                  or "model")
-        return {"planner": f"model:{model}", "calls": calls}
+        return {"planner": f"model:{model} + skill:hearth-care", "calls": calls}
     return {"planner": "rules", "calls": rules}
 
 

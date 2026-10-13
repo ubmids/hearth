@@ -780,7 +780,8 @@ not use it for anything other than running the service for you.</p>
                           (os.getenv("HEARTH_SIM_LLM_API_KEY") or
                            os.getenv("HEARTH_LLM_API_KEY")))
         return {"tts": sim.tts_provider(),
-                "planner": "model" if configured else "rules", "simulated": True}
+                "planner": "model + skill:hearth-care" if configured else "rules",
+                "simulated": True}
 
     @app.post("/sim/plan")
     async def sim_plan(request: Request):

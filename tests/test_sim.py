@@ -100,7 +100,11 @@ def test_a_configured_model_plans_with_hearths_own_tool_list_and_falls_back():
             "arguments": json.dumps({"medication": "warfarin", "asked_by": "Tom"})}},
             {"function": {"name": "not_a_tool", "arguments": "{}"}}]}
         out = sim.plan("did mom take it", "Tom", TOOLS)
-        assert out["planner"] == "model:stub-1", out
+        assert out["planner"] == "model:stub-1 + skill:hearth-care", out
+        # The model is taught by the Agent Skill, the same one any other
+        # assistant using Hearth loads, front matter stripped.
+        system = STUB["seen"]["messages"][0]["content"]
+        assert "Say refusals as given" in system and "name: hearth-care" not in system
         assert out["calls"] == [{"name": "check_dose", "arguments": {
             "medication": "warfarin", "asked_by": "Tom"}}], out
         sent = {f["function"]["name"] for f in STUB["seen"]["tools"]}
