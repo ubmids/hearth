@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth · Simulated Alexa+</title>
+<!--
+  SIMULATED ALEXA+. Alexa+ itself is not available to hackathon entrants, so
+  this page stands in for it, and says so on screen at all times.
+
+  It is a real MCP client. It authorises with OAuth 2.1 + PKCE, then speaks MCP
+  2025-11-25 over Streamable HTTP to /mcp: initialize, tools/list,
+  resources/read for Hearth's MCP App, and tools/call. It hosts that MCP App in
+  a sandboxed iframe the way an Echo Show would, over the ui/* postMessage
+  bridge. Every request and response is drawn in the traffic panel as it
+  happens. The one thing it cannot be is Alexa's model: /sim/plan picks the
+  tool calls (a configured model, else a small rule set, and the panel says
+  which), and every word the assistant says is the text Hearth's tools return.
+-->
+<style>
+  :root{
+    --bg:#0b0d10; --panel:#11151a; --panel2:#171c23; --line:#232a33; --ink:#eef2f6;
+    --muted:#9aa7b4; --dim:#5f6b78; --alexa:#1ec8ff; --alexa2:#3a7bff;
+    --ember:#ff7a45; --ok:#7fd49a; --stop:#ff6b4a; --warn:#ffc35c;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 700px at 30% 20%,#16202b 0,#0b0d10 60%);
+       color:var(--ink);font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+       -webkit-font-smoothing:antialiased;overflow:hidden}
+  header{display:flex;align-items:center;gap:14px;padding:14px 24px;border-bottom:1px solid var(--line);
+         background:rgba(11,13,16,.7);backdrop-filter:blur(6px)}
+  .brand{font-weight:720;font-size:19px;letter-spacing:-.01em}
+  .brand span{color:var(--ember)}
+  .sim{background:var(--warn);color:#1b1300;font-weight:800;font-size:12px;letter-spacing:.1em;
+       border-radius:6px;padding:5px 9px;text-transform:uppercase}
+  .pill{font:12px/1 var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 10px}
+  .pill.ok{color:var(--ok);border-color:#24432e}
+  .grow{flex:1}
+  main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(420px,.9fr);height:calc(100% - 59px)}
+  .stage{display:flex;flex-direction:column;padding:18px 26px 14px;min-width:0;min-height:0}
+  .devices{display:flex;gap:8px;margin-bottom:12px}
+  .devices button{font:inherit;font-size:13px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
+                  border-radius:10px;padding:8px 12px;cursor:pointer}
+  .devices button.on{color:var(--ink);border-color:#2f6f8a;background:#0f2430}
+  .devices small{display:block;color:var(--dim);font-size:11.5px}
+
+  /* Echo Show 8: 768x480 base canvas, scaled to the stage. */
+  .show{position:relative;align-self:center;flex:none;width:min(100%,800px,calc((100vh - 330px) * 1.51));aspect-ratio:16/10.6;
+        background:#050607;border-radius:26px;padding:16px 16px 26px;
+        box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 0 0 1px #1d232a}
+  .screen{position:relative;width:100%;height:100%;border-radius:12px;overflow:hidden;background:#1a1411}
+  .screen iframe{width:100%;height:100%;border:0;display:block;background:#1a1411}
+  .lightbar{position:absolute;left:16px;right:16px;bottom:10px;height:6px;border-radius:6px;
+            background:linear-gradient(90deg,var(--alexa2),var(--alexa),var(--alexa2));
+            opacity:0;transition:opacity .25s}
+  .speaking .lightbar{opacity:1;animation:pulse 1.1s ease-in-out infinite}
+  .listening .lightbar{opacity:.55}
+  @keyframes pulse{50%{filter:brightness(1.6)}}
+  .idle{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#d9c8bb;
+        font-size:42px;font-weight:300;letter-spacing:-.02em}
+  .idle small{display:block;font-size:17px;color:#8d7868;margin-top:6px}
+  .label{position:absolute;top:-11px;left:24px;background:var(--warn);color:#1b1300;font-size:11px;
+         font-weight:800;letter-spacing:.08em;border-radius:5px;padding:3px 8px;text-transform:uppercase}
+
+  /* Echo Dot: voice only. Nothing to draw, so nothing is drawn. */
+  .dot{align-self:center;width:300px;height:300px;border-radius:50%;margin:40px 0;position:relative;
+       background:radial-gradient(circle at 50% 40%,#2b3138,#14181c 70%);box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .dot::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:8px solid transparent;transition:.25s}
+  .dot.speaking::after{border-color:var(--alexa);box-shadow:0 0 40px var(--alexa);animation:pulse 1.1s infinite}
+  .dot.listening::after{border-color:rgba(30,200,255,.45)}
+  .dotcap{text-align:center;color:var(--dim);font-size:13px;margin-top:-26px}
+
+  .talk{margin-top:14px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:6px}
+  .turn{max-width:92%;padding:10px 14px;border-radius:14px;font-size:16px;line-height:1.45}
+  .turn b{display:block;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:2px}
+  .human{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+  .alexa{align-self:flex-end;background:#0c2532;border:1px solid #17485e}
+  .alexa b{color:var(--alexa)}
+  .alexa.stop{border-color:#6b2a1e;background:#2a120d}
+  .alexa.stop b{color:var(--stop)}
+  .host{align-self:center;color:var(--dim);font-size:13px;font-style:italic}
+
+  .say{display:flex;gap:8px;align-items:center;margin-top:10px}
+  .who{display:flex;gap:6px}
+  .who button{font:inherit;font-size:13px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
+              border-radius:999px;padding:7px 12px;cursor:pointer}
+  .who button.on{background:var(--ink);color:#0b0d10;border-color:var(--ink);font-weight:650}
+  .say input{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--ink);background:var(--panel);
+             border:1px solid var(--line);border-radius:12px;padding:11px 14px;outline:none}
+  .say input:focus{border-color:#2f6f8a}
+  .btn{font:inherit;font-size:14px;color:var(--ink);background:var(--panel2);border:1px solid var(--line);
+       border-radius:12px;padding:10px 14px;cursor:pointer;white-space:nowrap}
+  .btn.primary{background:var(--alexa);color:#00202b;border-color:var(--alexa);font-weight:700}
+  .btn:disabled{opacity:.4;cursor:default}
+  .next{margin-top:8px;color:var(--dim);font-size:13px;display:flex;gap:10px;align-items:center}
+  .next q{color:var(--muted)}
+  kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--muted)}
+
+  .wire{border-left:1px solid var(--line);background:rgba(10,12,15,.85);display:flex;flex-direction:column;min-height:0}
+  .wire h2{margin:0;padding:14px 18px 6px;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+  .wire .sub{padding:0 18px 10px;color:var(--dim);font-size:12.5px;border-bottom:1px solid var(--line)}
+  .log{flex:1;overflow-y:auto;padding:8px 12px 30px;font:12.5px/1.45 var(--mono)}
+  .ev{border:1px solid var(--line);border-radius:9px;margin:7px 0;background:var(--panel);overflow:hidden;
+      animation:in .25s ease-out}
+  @keyframes in{from{opacity:0;transform:translateY(6px)}}
+  .ev summary{list-style:none;cursor:pointer;padding:8px 10px;display:flex;gap:8px;align-items:baseline}
+  .ev summary::-webkit-details-marker{display:none}
+  .dir{font-weight:800;width:14px;flex:none}
+  .req .dir{color:var(--alexa)} .res .dir{color:var(--ok)} .res.err .dir{color:var(--stop)}
+  .plan .dir{color:var(--warn)} .host .dir{color:#c9a7ff}
+  .m{color:var(--ink);font-weight:650}
+  .a{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .t{color:var(--dim);flex:none}
+  .ev pre{margin:0;padding:8px 10px 10px;border-top:1px solid var(--line);color:#b9c6d3;white-space:pre-wrap;
+          word-break:break-word;max-height:300px;overflow:auto;background:#0d1014}
+  .tag{font-size:10.5px;border-radius:4px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
+  .tag.refused{color:var(--stop);border-color:#6b2a1e}
+  .tag.ok{color:var(--ok);border-color:#24432e}
+  .foot{padding:8px 18px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
+</style>
+<header>
+  <div class="brand">hearth<span>.</span></div>
+  <div class="sim" title="Alexa+ is not available to hackathon entrants. This page is a real MCP client standing in for it.">Simulated Alexa+</div>
+  <div class="pill" id="proto">MCP 2025-11-25 · Streamable HTTP</div>
+  <div class="pill" id="auth">OAuth 2.1 + PKCE …</div>
+  <div class="grow"></div>
+  <div class="pill" id="voice">voice …</div>
+  <div class="pill" id="planner">planner …</div>
+</header>
+<main>
+  <section class="stage">
+    <div class="devices" id="devices"></div>
+    <div id="device"></div>
+    <div class="talk" id="talk"></div>
+    <div class="say">
+      <div class="who" id="who"></div>
+      <input id="said" placeholder="Say something to Alexa…" autocomplete="off">
+      <button class="btn" id="mic" title="Speak (Chrome)">Mic</button>
+      <button class="btn primary" id="send">Send</button>
+    </div>
+    <div class="next" id="next"></div>
+  </section>
+  <aside class="wire">
+    <h2>MCP traffic, live</h2>
+    <div class="sub" id="wiresub">Every request this page sends to Hearth, and every answer.</div>
+    <div class="log" id="log"></div>
+    <div class="foot" id="foot">Hearth records every tools/call server-side, hash-chained.</div>
+  </aside>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// --- the household's devices: each is its own MCP session ------------------
+const DEVICES = {
+  kitchen: {name: "Kitchen Echo Show", where: "Rose's house", screen: true},
+  dot:     {name: "Echo Dot", where: "Tom's apartment, voice only", screen: false},
+  phone:   {name: "Alexa app", where: "Ada's phone", screen: true},
+};
+const PEOPLE = {Rose: "kitchen", Grace: "kitchen", Tom: "dot", Ada: "phone"};
+
+// The scripted scenes for the video. Press → (or the button) for the next one.
+// Every Alexa line is whatever Hearth answers; only the people are scripted.
+const SCRIPT = [
+  ["Rose", "Alexa, I'm just going to take my blood thinner."],
+  ["Tom", "Alexa, what did I miss with Mom today?"],
+  ["Tom", "Why did you stop her?"],
+  ["Ada", "Alexa, Mom's cardiology moved to Thursday at 10. Sort it out."],
+  ["Grace", "Alexa, we're nearly out of her warfarin. Reorder it."],
+  ["Grace", "Yes, go ahead."],
+  ["Tom", "Alexa, can Mom have a coffee?"],
+  ["Ada", "Mom finished the antibiotics."],
+  ["Ada", "Alexa, show me the record."],
+];
+// Page flags (?mute=1, ?voices=off, ?autoplay=1) survive the OAuth round trip,
+// which comes back to the bare path with only a code on it.
+const params = new URLSearchParams(location.search);
+if (!params.get("code")) sessionStorage.setItem("sim_flags", location.search);
+for (const [k, v] of new URLSearchParams(sessionStorage.getItem("sim_flags") || ""))
+  if (!params.has(k)) params.set(k, v);
+let step = 0, speaker = "Rose", device = "kitchen", token = null, CLIENT_ID = "", RESOURCE = "";
+let checkout = null, rpcId = 1, cardUri = null, cardHtml = null;
+const sessions = {};                      // device -> Mcp-Session-Id
+const voiceHumans = params.get("voices") !== "off";
+const muted = params.get("mute") === "1";
+
+// --- the traffic panel ------------------------------------------------------
+const t0 = performance.now();
+function stamp() { return ((performance.now() - t0) / 1000).toFixed(1) + "s"; }
+function log(kind, method, args, body, extra = "") {
+  const d = document.createElement("details");
+  d.className = "ev " + kind;
+  const arrow = {req: "→", res: "←", plan: "◆", host: "◇"}[kind.split(" ")[0]] || "·";
+  d.innerHTML = `<summary><span class="dir">${arrow}</span><span class="m">${esc(method)}</span>
+    <span class="a">${esc(args)}</span>${extra}<span class="t">${stamp()}</span></summary>
+    <pre>${esc(typeof body === "string" ? body : JSON.stringify(body, null, 2))}</pre>`;
+  $("#log").appendChild(d);
+  $("#log").scrollTop = $("#log").scrollHeight;
+}
+
+async function http(method, path, {headers = {}, body, form, label} = {}) {
+  const h = {...headers};
+  let payload = body;
+  if (form) { h["Content-Type"] = "application/x-www-form-urlencoded"; payload = new URLSearchParams(form); }
+  else if (body !== undefined) { h["Content-Type"] = "application/json"; payload = JSON.stringify(body); }
+  const shown = {...h}; if (shown.Authorization) shown.Authorization = "Bearer " + shown.Authorization.slice(7, 15) + "…";
+  log("req", label || `${method} ${path}`, "", {method, path, headers: shown, body: body ?? form});
+  const t = performance.now();
+  const r = await fetch(path, {method, headers: h, body: payload, redirect: "manual"});
+  const ms = (performance.now() - t).toFixed(0);
+  return {r, ms};
+}
+
+// --- MCP over Streamable HTTP -------------------------------------------------
+async function mcp(method, params, dev = device, notify = false) {
+  const msg = {jsonrpc: "2.0", method};
+  if (!notify) msg.id = rpcId++;
+  if (params !== undefined) msg.params = params;
+  const headers = {Authorization: "Bearer " + token, Accept: "application/json, text/event-stream",
+                   "MCP-Protocol-Version": "2025-11-25"};
+  if (sessions[dev]) headers["Mcp-Session-Id"] = sessions[dev];
+  const argline = method === "tools/call" ? `${params.name} ${JSON.stringify(params.arguments)}`
+                : method === "resources/read" ? params.uri : "";
+  const shown = {...headers, Authorization: "Bearer " + token.slice(0, 8) + "…"};
+  log("req", method, argline, {headers: shown, body: msg});
+  const t = performance.now();
+  const r = await fetch("/mcp", {method: "POST", headers: {...headers, "Content-Type": "application/json"},
+                                 body: JSON.stringify(msg)});
+  const ms = (performance.now() - t).toFixed(0);
+  const sid = r.headers.get("Mcp-Session-Id");
+  if (sid) sessions[dev] = sid;
+  const timing = (r.headers.get("Server-Timing") || "").match(/dur=([\d.]+)/);
+  if (r.status === 202) { log("res", `${r.status} Accepted`, method, "(no body)"); return null; }
+  const out = await r.json();
+  const rec = out.result && out.result.structuredContent && out.result.structuredContent.record;
+  const tag = rec ? `<span class="tag ${rec.outcome}">record #${rec.seq} ${rec.outcome}</span>` : "";
+  const summary = out.error ? out.error.message
+    : method === "tools/call" ? (out.result.content[0] || {}).text
+    : method === "tools/list" ? out.result.tools.map(t => t.name).join(", ")
+    : method === "initialize" ? `session ${sessions[dev].slice(0, 8)}… · ${out.result.protocolVersion}`
+    : method === "resources/read" ? `${out.result.contents[0].mimeType}, ${out.result.contents[0].text.length} bytes`
+    : "";
+  log("res" + (out.error || (out.result && out.result.isError) ? " err" : ""),
+      `${r.status} · ${ms} ms${timing ? ` (server ${(+timing[1]).toFixed(2)} ms)` : ""}`,
+      summary, out, tag);
+  return out;
+}
+
+async function openSession(dev) {
+  if (sessions[dev]) return;
+  await mcp("initialize", {protocolVersion: "2025-11-25",
+    capabilities: {extensions: {"io.modelcontextprotocol/ui": {mimeTypes: ["text/html;profile=mcp-app"]}}},
+    clientInfo: {name: "simulated-alexa-plus", title: `Simulated Alexa+ (${DEVICES[dev].name})`, version: "1.0"}}, dev);
+  await mcp("notifications/initialized", undefined, dev, true);
+}
+
+// --- the MCP App host -------------------------------------------------------
+let frame = null, frameReady = false, pendingResult = null;
+function drawDevice() {
+  const d = DEVICES[device];
+  $("#devices").innerHTML = Object.entries(DEVICES).map(([k, v]) =>
+    `<button class="${k === device ? "on" : ""}" onclick="pickDevice('${k}')">${esc(v.name)}<small>${esc(v.where)}</small></button>`).join("");
+  if (!d.screen) {
+    $("#device").innerHTML = `<div class="dot" id="frameWrap"></div><div class="dotcap">${esc(d.name)} · ${esc(d.where)} · no screen, so Hearth's voice reply is the whole answer</div>`;
+    frame = null; frameReady = false;
+    return;
+  }
+  $("#device").innerHTML = `<div class="show" id="frameWrap"><div class="label">Simulated ${esc(d.name)}</div>
+    <div class="screen"><div class="idle" id="idle">${clock()}<small>${esc(d.where)}</small></div></div><div class="lightbar"></div></div>`;
+  frame = null; frameReady = false;
+}
+function clock() { const n = new Date(); return n.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}); }
+function pickDevice(k) { device = k; drawDevice(); }
+window.pickDevice = pickDevice;
+
+function showResult(result) {
+  if (!DEVICES[device].screen || !cardHtml) return;
+  const screen = document.querySelector(".screen");
+  if (!frame) {
+    screen.innerHTML = "";
+    frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.setAttribute("title", "Hearth MCP App");
+    frame.srcdoc = cardHtml;
+    screen.appendChild(frame);
+    frameReady = false;
+  }
+  pendingResult = result;
+  if (frameReady) deliver();
+}
+function deliver() {
+  if (!frame || !pendingResult) return;
+  frame.contentWindow.postMessage({jsonrpc: "2.0", method: "ui/notifications/tool-result", params: pendingResult}, "*");
+  log("host", "ui/notifications/tool-result", "host → MCP App view", {structuredContent: pendingResult.structuredContent});
+  pendingResult = null;
+}
+window.addEventListener("message", async ev => {
+  if (!frame || ev.source !== frame.contentWindow) return;
+  const m = ev.data || {};
+  if (m.method === "ui/initialize") {
+    frame.contentWindow.postMessage({jsonrpc: "2.0", id: m.id, result: {
+      protocolVersion: "2026-01-26", hostInfo: {name: "simulated-alexa-plus", version: "1.0"},
+      hostCapabilities: {}, hostContext: {theme: "dark", displayMode: "inline", deviceClass: "echo-show-8",
+        maxWidth: 768, maxHeight: 480, platform: "simulated"}}}, "*");
+  } else if (m.method === "ui/notifications/initialized") {
+    frameReady = true; deliver();
+  } else if (m.method === "ui/message") {
+    log("host", "ui/message", "MCP App view → host", m.params);
+    frame.contentWindow.postMessage({jsonrpc: "2.0", id: m.id, result: {}}, "*");
+    await converse(speaker, m.params.content.text, {tapped: true});
+  }
+});
+
+// --- voice ------------------------------------------------------------------
+let ttsProvider = "browser";
+function setLight(state) {
+  const w = document.getElementById("frameWrap");
+  if (w) { w.classList.toggle("speaking", state === "speaking"); w.classList.toggle("listening", state === "listening"); }
+}
+async function speak(text, who = "alexa") {
+  if (!text || muted) return;
+  if (who !== "alexa" && !voiceHumans) return;
+  if (who === "alexa") setLight("speaking");
+  try {
+    if (ttsProvider !== "browser") {
+      const r = await fetch("/sim/tts", {method: "POST", headers: {"Content-Type": "application/json",
+        Authorization: "Bearer " + token}, body: JSON.stringify({text, who: who.toLowerCase()})});
+      if (r.status === 200) {
+        const url = URL.createObjectURL(await r.blob());
+        // Resolve on end, on error, or after the clip's length plus a margin,
+        // so a browser that never fires `ended` cannot stall the conversation.
+        await new Promise(res => {
+          const a = new Audio(url); a.onended = res; a.onerror = res;
+          a.onloadedmetadata = () => setTimeout(res, (a.duration || 20) * 1000 + 1500);
+          setTimeout(res, 30000);
+          a.play().catch(res);
+        });
+        return;
+      }
+    }
+    await browserSay(text, who);
+  } finally { if (who === "alexa") setLight(""); }
+}
+function browserSay(text, who) {
+  return new Promise(res => {
+    if (!("speechSynthesis" in window)) return res();
+    const u = new SpeechSynthesisUtterance(text);
+    const vs = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+    const pick = names => vs.find(v => names.some(n => v.name.includes(n)));
+    u.voice = who === "alexa" ? (pick(["Aria Online", "Jenny Online", "Samantha", "Google US English"]) || vs[0])
+            : who === "Tom" ? (pick(["Guy Online", "Daniel", "Google UK English Male"]) || vs[1])
+            : (pick(["Michelle Online", "Karen", "Moira", "Google UK English Female"]) || vs[2]);
+    u.rate = 1.02; u.onend = res; u.onerror = res;
+    setTimeout(res, 400 + text.length * 90);
+    speechSynthesis.speak(u);
+  });
+}
+
+// --- a turn -----------------------------------------------------------------
+function turn(cls, who, text) {
+  const d = document.createElement("div");
+  d.className = "turn " + cls;
+  d.innerHTML = cls === "host" ? esc(text) : `<b>${esc(who)}</b>${esc(text)}`;
+  $("#talk").appendChild(d);
+  $("#talk").scrollTop = $("#talk").scrollHeight;
+}
+
+async function converse(who, said, opts = {}) {
+  speaker = who; drawWho();
+  if (PEOPLE[who] && PEOPLE[who] !== device) { device = PEOPLE[who]; drawDevice(); }
+  await openSession(device);
+  if (!opts.tapped) { turn("human", who, said); await speak(said, who); }
+  setLight("listening");
+  const {r, ms} = await http("POST", "/sim/plan", {headers: {Authorization: "Bearer " + token},
+    body: {said, speaker: who, context: {checkout}}, label: "simulator: plan"});
+  const plan = await r.json();
+  log("plan", `planner (${plan.planner})`, plan.calls.map(c => c.name || c.host).join(" + "), plan);
+  $("#planner").textContent = "planner: " + plan.planner;
+  const spoken = []; let tone = "";
+  for (const c of plan.calls) {
+    if (c.host === "checkout.complete") {
+      spoken.push(await payCheckout(c.checkout));
+      continue;
+    }
+    const out = await mcp("tools/call", {name: c.name, arguments: c.arguments});
+    const res = out && out.result;
+    if (!res) continue;
+    spoken.push((res.content[0] || {}).text || "");
+    const sc = res.structuredContent || {};
+    if (sc.checkout_session && sc.status === "ready_for_complete") checkout = sc.checkout_session;
+    if (sc.card && sc.card.tone === "stop") tone = "stop";
+    if (sc.card) showResult(res);
+  }
+  const reply = spoken.join(" ").replace(/\s*\[[0-9a-f]{6,}\]/g, "").trim();
+  turn("alexa " + tone, "Alexa", reply);
+  await speak(reply, "alexa");
+}
+
+// Alexa+ owns payment. The add-on only opens a checkout session; the host
+// confirms with the customer and completes it. This is that host step,
+// simulated, against Hearth's UCP-shaped endpoint and a sandbox merchant.
+async function payCheckout(id) {
+  if (!id) return "There is nothing waiting to be paid for.";
+  turn("host", "", "Simulated Alexa+ checkout: confirmed by voice, Amazon card ending 4242, sandbox merchant.");
+  const key = "idem-" + id;
+  const {r, ms} = await http("POST", `/checkout-sessions/${id}/complete`, {
+    headers: {Authorization: "Bearer " + token, "Idempotency-Key": key,
+              "UCP-Agent": 'profile="simulated-alexa-plus"'}, label: `POST /checkout-sessions/…/complete`});
+  const s = await r.json();
+  log(r.ok ? "res" : "res err", `${r.status} · ${ms} ms`, `${s.status} ${s.order_id || s.error || ""}`, s);
+  checkout = null;
+  if (!r.ok) return "I could not place that order.";
+  const total = (s.totals.find(t => t.type === "total").amount / 100).toFixed(2);
+  showResult({structuredContent: {card: {pattern: "card", tone: "ok", eyebrow: "Order placed · sandbox",
+    title: s.line_items[0].item.title, body: `$${total} · arriving tomorrow`,
+    items: [{label: "Order", detail: s.order_id, status: "done"},
+            {label: "Family board", detail: "Everyone has been told.", status: "done"}],
+    footer: "Paid through simulated Alexa+ checkout"}}});
+  return `Done. ${s.line_items[0].item.title} is ordered, ${total} dollars, arriving tomorrow. I've told the family.`;
+}
+
+// --- people, script, input --------------------------------------------------
+function drawWho() {
+  $("#who").innerHTML = Object.keys(PEOPLE).map(p =>
+    `<button class="${p === speaker ? "on" : ""}" onclick="setWho('${p}')">${p}</button>`).join("");
+}
+window.setWho = p => { speaker = p; drawWho(); if (PEOPLE[p] !== device) { device = PEOPLE[p]; drawDevice(); } };
+function drawNext() {
+  $("#next").innerHTML = step < SCRIPT.length
+    ? `<button class="btn" id="go">▶ Next scene</button> <kbd>→</kbd> <span>${esc(SCRIPT[step][0])}:</span> <q>${esc(SCRIPT[step][1])}</q>`
+    : `<span>End of the scripted scenes. Keep talking, or reload for a fresh household.</span>`;
+  const go = document.getElementById("go"); if (go) go.onclick = nextScene;
+}
+let busy = false;
+async function nextScene() {
+  if (busy || step >= SCRIPT.length) return;
+  busy = true;
+  const [who, line] = SCRIPT[step++]; drawNext();
+  try { await converse(who, line); } finally { busy = false; }
+}
+async function send() {
+  const said = $("#said").value.trim(); if (!said || busy) return;
+  $("#said").value = ""; busy = true;
+  try { await converse(speaker, said); } finally { busy = false; }
+}
+$("#send").onclick = send;
+$("#said").addEventListener("keydown", e => { if (e.key === "Enter") send(); });
+document.addEventListener("keydown", e => { if (e.key === "ArrowRight" && document.activeElement !== $("#said")) nextScene(); });
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  $("#mic").onclick = () => {
+    const rec = new SR(); rec.lang = "en-US"; rec.interimResults = false;
+    setLight("listening");
+    rec.onresult = e => { $("#said").value = e.results[0][0].transcript.replace(/^alexa,?\s*/i, "Alexa, "); send(); };
+    rec.onend = () => setLight("");
+    rec.start();
+  };
+} else { $("#mic").disabled = true; $("#mic").title = "Speech input needs Chrome"; }
+
+// --- getting in: OAuth 2.1 + PKCE, the same path Alexa+ account linking uses
+const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+async function connect() {
+  const here = location.origin + location.pathname;
+  const prm = await (await fetch("/.well-known/oauth-protected-resource")).json();
+  const asm = await (await fetch("/.well-known/oauth-authorization-server")).json();
+  CLIENT_ID = asm.client_id_hint; RESOURCE = prm.resource;
+  const code = params.get("code");
+  if (code) {
+    history.replaceState({}, "", here + (sessionStorage.getItem("sim_flags") || ""));
+    log("res", "302 /authorize → code", "authorization code received", {code: code.slice(0, 6) + "…"});
+    const {r, ms} = await http("POST", "/token", {form: {grant_type: "authorization_code", code,
+      code_verifier: sessionStorage.getItem("sim_verifier") || "", client_id: CLIENT_ID,
+      redirect_uri: here, resource: RESOURCE}, label: "POST /token (PKCE S256 verifier)"});
+    const t = await r.json();
+    log(r.ok ? "res" : "res err", `${r.status} · ${ms} ms`, t.access_token ? "access token issued" : t.error, {...t, access_token: t.access_token ? t.access_token.slice(0, 8) + "…" : undefined});
+    if (!t.access_token) throw new Error(t.error || "token exchange failed");
+    return t.access_token;
+  }
+  const a = new Uint8Array(48); crypto.getRandomValues(a);
+  const verifier = b64url(a.buffer);
+  sessionStorage.setItem("sim_verifier", verifier);
+  const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  location.href = "/authorize?" + new URLSearchParams({client_id: CLIENT_ID, redirect_uri: here,
+    response_type: "code", code_challenge: challenge, code_challenge_method: "S256",
+    resource: RESOURCE, scope: "household.read household.write"});
+  return null;
+}
+
+(async () => {
+  drawWho(); drawDevice(); drawNext();
+  log("req", "GET /.well-known/oauth-protected-resource", "RFC 9728 discovery", "");
+  token = await connect();
+  if (!token) return;
+  $("#auth").textContent = "OAuth 2.1 + PKCE ✓"; $("#auth").classList.add("ok");
+  const cfg = await (await fetch("/sim/config", {headers: {Authorization: "Bearer " + token}})).json();
+  ttsProvider = cfg.tts;
+  $("#voice").textContent = "voice: " + ({polly: "Amazon Polly neural", piper: "Piper neural (offline)", browser: "browser voice"}[cfg.tts] || cfg.tts);
+  $("#planner").textContent = "planner: " + cfg.planner;
+  await openSession(device);
+  await mcp("tools/list", {});
+  const res = await mcp("resources/list", {});
+  cardUri = res.result.resources[0].uri;
+  const read = await mcp("resources/read", {uri: cardUri});
+  cardHtml = read.result.contents[0].text;
+  $("#wiresub").textContent = `Session ${sessions[device].slice(0, 8)}… · MCP App ${cardUri}`;
+  if (params.get("autoplay") === "1") nextScene();
+})().catch(e => { turn("host", "", "Could not connect: " + e.message); });
+</script>
+</html>

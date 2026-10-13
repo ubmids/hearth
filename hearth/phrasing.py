@@ -342,12 +342,18 @@ def confirm(statements, *, speaker: str = "", context: str | None = None) -> str
     return line
 
 
+def is_are(thing: str) -> str:
+    """"the antibiotics are", "the cold snap is", "Gran's visit is"."""
+    last = str(thing).strip().split(" ")[-1].lower()
+    return "are" if last.endswith("s") and not last.endswith(("'s", "ss")) else "is"
+
+
 def closed(context: str, statements) -> str:
     """What the house says back when a sentence ended a situation."""
     if not statements:
-        return f"Understood, {context} is over."
+        return f"Understood, {context} {is_are(context)} over."
     n = "One thing" if len(statements) == 1 else f"{len(statements)} things"
-    return (f"Understood, {context} is over. {n} stopped applying. "
+    return (f"Understood, {context} {is_are(context)} over. {n} stopped applying. "
             + " ".join(statements))
 
 

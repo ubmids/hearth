@@ -13,11 +13,11 @@ import time
 import urllib.parse
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import care as carelib
-from . import phrasing
+from . import phrasing, sim
 from .care import Care, CareBook
 from .extract import detect_context_end, extract
 from .household import Household
@@ -695,6 +695,54 @@ not use it for anything other than running the service for you.</p>
 <h2>Source</h2>
 <p>Open source under the MIT licence at
 <a href="https://github.com/ubmids/hearth">github.com/ubmids/hearth</a>.</p>""")
+
+    # --- the simulated Alexa+ client ------------------------------------
+    # Labelled as a simulation on every surface. It reaches Hearth only
+    # through /mcp and /checkout-sessions, like any client; these three
+    # endpoints are the parts of Alexa it has to stand in for.
+    @app.get("/")
+    async def root():
+        # A judge opening the bare URL lands on the product, not a 404.
+        return RedirectResponse("/alexa", status_code=307)
+
+    @app.get("/alexa", response_class=HTMLResponse)
+    async def alexa_sim():
+        path = os.path.join(os.path.dirname(__file__), "web", "alexa.html")
+        with open(path) as f:
+            return HTMLResponse(f.read())
+
+    @app.get("/sim/config")
+    async def sim_config(request: Request):
+        if auth.verify(request.headers.get("authorization")) is None:
+            return _unauthorized()
+        configured = bool((os.getenv("HEARTH_SIM_LLM_BASE_URL") or
+                           os.getenv("HEARTH_LLM_BASE_URL")) and
+                          (os.getenv("HEARTH_SIM_LLM_API_KEY") or
+                           os.getenv("HEARTH_LLM_API_KEY")))
+        return {"tts": sim.tts_provider(),
+                "planner": "model" if configured else "rules", "simulated": True}
+
+    @app.post("/sim/plan")
+    async def sim_plan(request: Request):
+        if auth.verify(request.headers.get("authorization")) is None:
+            return _unauthorized()
+        body = await request.json()
+        from .mcp import TOOLS
+        return sim.plan(str(body.get("said", "")), str(body.get("speaker", "")),
+                        TOOLS, body.get("context") or {})
+
+    @app.post("/sim/tts")
+    async def sim_tts(request: Request):
+        # Behind the bearer like everything else: a configured Polly key is
+        # somebody's money, and an open endpoint would spend it for anyone.
+        if auth.verify(request.headers.get("authorization")) is None:
+            return _unauthorized()
+        body = await request.json()
+        audio, mime, provider = sim.speak(str(body.get("text", "")),
+                                          str(body.get("who", "alexa")))
+        if audio is None:
+            return Response(status_code=204, headers={"X-TTS-Provider": provider})
+        return Response(audio, media_type=mime, headers={"X-TTS-Provider": provider})
 
     @app.get("/console", response_class=HTMLResponse)
     async def console():

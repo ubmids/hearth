@@ -201,7 +201,7 @@ def test_the_record_survives_a_restart_and_still_verifies():
         assert len(again.server.care.book.doses) == 1
         assert again.home[1].actions[-1].outcome == "refused"
         reply = again.say("record", limit=3)
-        assert "chain intact" in reply, reply
+        assert "the chain is intact" in reply and "1 refused" in reply, reply
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("PASS the record survives a restart")
@@ -217,9 +217,15 @@ def test_arrange_moves_the_appointment_and_does_everything_that_follows():
     services = [s["service"] for s in steps]
     assert services[:4] == ["calendar", "rota", "rides", "rides"], services
     assert services[-1] == "board", services
-    assert "Moved Mom's cardiology from Tuesday 2:00 pm to Thursday 10:00 am" in speech
-    assert "Tom is taking Mom: Tom does Thursdays" in speech, speech
-    assert "Cancelled the Tuesday ride" in speech and "9:15 am" in speech, speech
+    # Spoken short; the card carries every step.
+    assert speech.startswith("Done. Mom's cardiology is now Thursday at 10:00 am."), speech
+    assert "Tom is taking Mom, since Tom does Thursdays" in speech, speech
+    assert "cancelled the old ride" in speech and "9:15 am" in speech, speech
+    lines = [s["line"] for s in steps]
+    assert "Moved Mom's cardiology from Tuesday 2:00 pm to Thursday 10:00 am." in lines
+    assert "Cancelled the Tuesday ride (Hearth sandbox rides)." in lines, lines
+    card = result["structuredContent"]["card"]
+    assert card["pattern"] == "list" and len(card["items"]) == len(steps)
     book = house.server.care.book
     appt = next(a for a in book.appointments if a["what"] == "cardiology")
     assert carelib.local(appt["at"]).strftime("%A %H:%M") == "Thursday 10:00"
@@ -312,7 +318,7 @@ def test_catch_up_tells_a_sibling_what_happened_since_they_last_asked():
     house.sid = house.initialize()
     reply = house.say("catch_up", person="Tom")
     assert reply.startswith("Since you last checked in"), reply
-    assert "I stopped a second warfarin for Mom" in reply, reply
+    assert "Mom went to take a second warfarin and I stopped her" in reply, reply
     assert "Tom is taking Mom" in reply, reply
     assert "Mom slept well" in reply, reply
     # Asking again straight away: nothing new, because Hearth remembers he asked.
@@ -395,7 +401,8 @@ def test_the_care_sentences_become_beliefs_and_situations_end():
         assert detect_context_end(said, ["the antibiotics"]) == "the antibiotics", said
     house = House()
     reply = house.say("remember", said="Mom finished the antibiotics", speaker="Ada")
-    assert "the antibiotics is over" in reply and "alcohol" in reply, reply
+    assert reply.startswith("Understood, the antibiotics are over."), reply
+    assert "Mom's alcohol is off limits. That no longer applies." in reply, reply
     rota = house.say("remember", said="I can do Saturdays", speaker="Tom")
     assert "The Saturday escort is Tom." in rota, rota
     print("PASS care sentences and endings")

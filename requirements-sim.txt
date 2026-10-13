@@ -1,0 +1,4 @@
+# Optional, for the simulated Alexa+ client's offline neural voice.
+# Not needed by the MCP server. CPU only.
+-r requirements.txt
+piper-tts>=1.3

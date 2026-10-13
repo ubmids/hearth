@@ -210,6 +210,10 @@ class Resolution:
 
 def _ago(then: float, now: float | None = None) -> str:
     secs = (now or time.time()) - then
+    # Weeks only from two of them: "1 week ago" for something said twelve days
+    # ago rounds away five days, which matters when it is a medication rule.
+    if 604800 <= secs < 2 * 604800:
+        return f"{int(secs // 86400)} days ago"
     for unit, n in (("week", 604800), ("day", 86400), ("hour", 3600)):
         if secs >= n:
             v = int(secs // n)

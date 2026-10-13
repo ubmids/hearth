@@ -103,8 +103,11 @@ def when_said(ts: float, now: float | None = None) -> str:
         return f"yesterday at {clock(ts)}"
     if d.date() == (n + timedelta(days=1)).date():
         return f"tomorrow at {clock(ts)}"
-    if abs((d.date() - n.date()).days) < 7:
+    gap = (d.date() - n.date()).days
+    if abs(gap) < 7:
         return f"on {d.strftime('%A')} at {clock(ts)}"
+    if -21 <= gap < 0:
+        return f"{-gap} days ago"
     return f"on {d.strftime('%A %-d %B')} at {clock(ts)}"
 
 
@@ -550,6 +553,8 @@ class Care:
 
 def _action_line(a, now) -> str:
     when = when_said(a.at, now)
-    if a.outcome == "refused" and a.domain.startswith("medication."):
-        return f"{when[:1].upper()}{when[1:]}, she went to take another and I {a.what}."
+    m = re.fullmatch(r"stopped a second (\S+) for (.+)", a.what)
+    if a.outcome == "refused" and m:
+        return (f"{when[:1].upper()}{when[1:]}, {m.group(2)} went to take a second "
+                f"{m.group(1)} and I stopped her.")
     return f"{when[:1].upper()}{when[1:]}, {a.by or 'someone'} asked and I {a.what}."

@@ -24,6 +24,9 @@
         border-top:8px solid var(--tone)}
   .eyebrow{font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
            font-weight:650}
+  h1.long{font-size:31px}
+  .list li{padding:7px 0}
+  .list .det{font-size:18px}
   h1{font-size:40px;line-height:1.08;letter-spacing:-.02em;margin:6px 0 4px;font-weight:720;
      color:var(--tone)}
   .tone-info h1{color:var(--ink)}
@@ -76,9 +79,9 @@
       return;
     }
     const tone = {stop: "--stop", ok: "--ok", warn: "--warn", info: "--info"}[c.tone] || "--info";
-    root.className = "card tone-" + (c.tone || "info");
+    root.className = "card tone-" + (c.tone || "info") + (c.pattern === "list" ? " list" : "");
     root.style.setProperty("--tone", `var(${tone})`);
-    const items = (c.items || []).slice(0, c.pattern === "list" ? 6 : 4).map(i => `
+    const items = (c.items || []).slice(0, c.pattern === "list" ? 5 : 4).map(i => `
       <li class="s-${esc(i.status || "info")}">
         <span class="mark">${MARK[i.status] || "•"}</span>
         <div><div class="lab">${esc(i.label)}</div>
@@ -88,7 +91,7 @@
     const rec = sc.record ? `<span class="rec">recorded #${esc(sc.record.seq)} · ${esc(sc.record.hash)}</span>` : "";
     root.innerHTML = `
       <div class="eyebrow">${esc(c.eyebrow)}</div>
-      <h1>${esc(c.title)}</h1>
+      <h1 class="${String(c.title || "").length > 26 ? "long" : ""}">${esc(c.title)}</h1>
       ${c.body ? `<div class="body">${esc(c.body)}</div>` : ""}
       <ul>${items}</ul>
       ${c.cta ? `<button id="cta">${esc(c.cta.label)}</button>` : ""}

@@ -444,12 +444,7 @@ class HearthMCP:
         # home" is not a new belief, it is the end of several old ones.
         ending = self.detect_end(said, self._open_contexts()) if self.detect_end else None
         if ending:
-            ended = self.h.end_context(ending)
-            gone = " ".join(phrasing.statement(b.domain, b.slot, b.value)
-                            for b in ended)
-            return _text(f"Understood, {ending} is over. {gone} "
-                         f"{'That' if len(ended) == 1 else 'Those'} no longer "
-                         f"{'applies' if len(ended) == 1 else 'apply'}.")
+            return self._ended(ending, self.h.end_context(ending))
 
         found = (self.extract or (lambda t, n: []))(said, self._names())
         if not found:
@@ -591,9 +586,16 @@ class HearthMCP:
         ended = self.h.end_context(context)
         if not ended:
             return _text(f"Nothing was riding on {context}.")
-        gone = " ".join(phrasing.statement(b.domain, b.slot, b.value)
-                        for b in ended)
-        return _text(f"Understood, {context} is over. {gone} "
+        return self._ended(context, ended)
+
+    def _ended(self, context, ended):
+        """What the house says when a situation closes, naming who each rule
+        was about: "Mom's alcohol is off limits", never "the alcohol"."""
+        gone = " ".join(phrasing.statement(
+            b.domain, b.slot, b.value,
+            self.h.name_of(b.scope) if b.scope else None) for b in ended)
+        return _text(f"Understood, {context} {phrasing.is_are(context)} over. "
+                     f"{gone} "
                      f"{'That' if len(ended) == 1 else 'Those'} no longer "
                      f"{'applies' if len(ended) == 1 else 'apply'}.")
 
@@ -680,8 +682,22 @@ class HearthMCP:
         out = self.care.arrange(what, when, asked_by, person, where, now=self._now)
         a, who = out["appointment"], out["person"]
         her = who.name if who else "them"
-        lines = [s["line"] for s in out["steps"]]
-        speech = " ".join(lines)
+        # Said shorter than it is drawn: the card lists every service, the
+        # voice says what changed and anything somebody now has to do.
+        day = carelib.local(a["at"]).strftime("%A")
+        speech = f"Done. {phrasing.possessive(her)} {a['what']} is now {day} at {carelib.clock(a['at'])}."
+        if out["escort"]:
+            speech += (f" {out['escort']} is taking {her}, since {out['escort']} "
+                       f"does {day}s.")
+        cancelled = any(s["service"] == "rides" and s["line"].startswith("Cancelled")
+                        for s in out["steps"])
+        told = next((s["line"] for s in out["steps"] if s["service"] == "board"), "")
+        speech += (f" I {'cancelled the old ride, ' if cancelled else ''}booked a ride "
+                   f"for {carelib.clock(out['ride']['pickup'])}, and "
+                   + told[:1].lower() + told[1:])
+        for s in out["steps"]:
+            if s["status"] == "needs_attention":
+                speech += " " + s["line"]
         return _text(speech, {
             "pattern": "list", "tone": "ok", "eyebrow": "Sorted",
             "title": f"{phrasing.possessive(her)} {a['what']}, "
@@ -749,8 +765,11 @@ class HearthMCP:
     def _tool_record(self, limit=10):
         ok, bad = self.trace.verify()
         recent = list(reversed(self.trace.entries))[:max(1, min(int(limit or 10), 50))]
+        refused = sum(1 for e in self.trace.entries if e.outcome == "refused")
         line = (f"{len(self.trace.entries)} calls on the record, "
-                + ("chain intact." if ok else f"chain broken at entry {bad}."))
+                + (f"{refused} refused, " if refused else "")
+                + ("and the chain is intact: nothing has been edited or removed."
+                   if ok else f"and the chain is broken at entry {bad}."))
         return _text(line, {
             "pattern": "list", "tone": "ok" if ok else "stop",
             "eyebrow": "The record", "title": f"{len(self.trace.entries)} calls",

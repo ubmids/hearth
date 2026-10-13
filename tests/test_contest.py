@@ -608,10 +608,12 @@ def test_the_sentence_the_assistant_says_out_loud():
 
     # And the boundaries either side of each unit, including the singulars.
     ago = {secs: _ago(now - secs, now) for secs in
-           (0, 3599, 3600, 7200, 86400, 172800, 604800, 3 * WEEK)}
+           (0, 3599, 3600, 7200, 86400, 172800, 604800, 12 * 86400, 2 * WEEK,
+            3 * WEEK)}
     assert ago == {0: "just now", 3599: "just now", 3600: "1 hour ago",
                    7200: "2 hours ago", 86400: "1 day ago", 172800: "2 days ago",
-                   604800: "1 week ago", 3 * WEEK: "3 weeks ago"}, ago
+                   604800: "7 days ago", 12 * 86400: "12 days ago",
+                   2 * WEEK: "2 weeks ago", 3 * WEEK: "3 weeks ago"}, ago
     print("PASS the sentence the assistant says out loud")
 
 def test_a_save_that_fails_does_not_destroy_the_house():
