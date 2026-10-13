@@ -81,8 +81,12 @@ def seed_care_household(h: Household, book: CareBook, now=None) -> None:
     said(ada, "diet", "alcohol", "none",
          "No wine for Mom while she's on the antibiotics", 5,
          scope=mom.id, context="the antibiotics")
+    # Tom last spoke to the house on a Sunday-evening call, two days back.
+    evening = carelib.local(now - 2 * DAY).replace(hour=19, minute=30, second=0,
+                                                   microsecond=0).timestamp()
     said(tom, "diet", "coffee_cutoff", "18:00",
-         "Mom can have coffee till six, it's fine", 2, scope=mom.id)
+         "Mom can have coffee till six, it's fine", (now - evening) / DAY,
+         scope=mom.id)
 
     # This morning's dose. At 9:10 if that has passed, else half an hour ago,
     # so the scene reads true whenever it is filmed.

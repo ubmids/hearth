@@ -1,187 +1,184 @@
-"""The demo, spoken.
+"""The demo, spoken: the scenes from /alexa, rendered to audio offline.
 
-Hearth's whole claim is about something you hear: an assistant that acts on its
-own, and can tell you why. Read on a page that is an idea. Heard in a room it is
-either obvious or it is nothing, and there is no way to find out which by
-looking at a console.
+Every line marked Alexa is what the real server returned, over the real bearer
+path, from the real tools, chosen by the same planner the simulated client
+uses. The household's lines are scripted, because a person saying a sentence
+is not the part under test. If the resolver changed tomorrow, this would say
+something different.
 
-Amazon's rules allow "a simulated Alexa+ experience built using any AI or
-agentic tool", which is what this is. The one rule it holds to: **every line the
-assistant says comes back from the real server**, over HTTP, through the real
-bearer path, from the real resolver. The household's lines are scripted because
-a person saying a sentence is not the part under test. The assistant's are not
-scripted at all, and if the resolution logic changed tomorrow this demo would
-say something different.
+Voices are Piper (offline, neural, CPU). Point HEARTH_PIPER_DIR at a folder
+holding the .onnx voices named below (from huggingface.co/rhasspy/piper-voices).
 
-That distinction is the difference between a demo and a mock-up, and it is worth
-more than any amount of polish: a judge who suspects the answers are hardcoded
-has learned nothing from watching it.
+Writes, next to this file:
+  hold-on-rose.m4a   the conversation
+  transcript.md      who said what, with timestamps
+  hold-on-rose.srt   captions for the video edit
 
-Run: python3 demo/voice.py
+Run: HEARTH_PIPER_DIR=/path/to/voices python3 demo/voice.py
 """
+import io
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("HEARTH_TZ", "America/New_York")
 
-from fastapi.testclient import TestClient
+# The scenes are set at 1:40 in the afternoon, household time, whenever this
+# runs, so the morning dose reads "9:10 this morning" as it does on camera.
+# The clock is shifted, not frozen: everything still happens in order.
+_real = time.time
 
-from hearth.app import create_app
 
-# A cast, so the ear can tell three people apart without being told.
-DAD, ADA, ALEXA = "Daniel", "Junior", "Samantha"
+def _afternoon():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(os.environ["HEARTH_TZ"])
+    now = datetime.now(tz)
+    return now.replace(hour=13, minute=40, second=0, microsecond=0).timestamp() - now.timestamp()
 
-BASE = "https://hearth.local"
-WEEK = 7 * 24 * 3600
+
+_shift = _afternoon()
+time.time = lambda: _real() + _shift
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from hearth import sim  # noqa: E402
+from hearth.app import create_app  # noqa: E402
+
+VOICES = {"Alexa": "en_US-amy-medium", "Rose": "en_US-kristin-medium",
+          "Tom": "en_US-ryan-high", "Ada": "en_US-lessac-medium",
+          "Grace": "en_US-hfc_female-medium"}
+SCRIPT = [
+    ("Rose", "Alexa, I'm just going to take my blood thinner."),
+    ("Tom", "Alexa, what did I miss with Mom today?"),
+    ("Tom", "Why did you stop her?"),
+    ("Ada", "Alexa, Mom's cardiology moved to Thursday at 10. Sort it out."),
+    ("Grace", "Alexa, we're nearly out of her warfarin. Reorder it."),
+    ("Grace", "Yes, go ahead."),
+    ("Tom", "Alexa, can Mom have a coffee?"),
+    ("Ada", "Mom finished the antibiotics."),
+    ("Ada", "Alexa, show me the record."),
+]
+RATE = 22050
 
 
 class Room:
-    """One household, one server, one running tape."""
+    def __init__(self):
+        base = "https://hearth.local"
+        self.app = create_app(issuer=base, resource=f"{base}/mcp", seed="care")
+        self.c = TestClient(self.app)
+        self.h = {"Authorization": "Bearer "
+                  + self.app.state.auth.issue_for_testing(subject="demo-house")}
+        self.checkout = None
+        from piper import PiperVoice
+        root = os.environ["HEARTH_PIPER_DIR"]
+        self.voices = {who: PiperVoice.load(os.path.join(root, f"{v}.onnx"))
+                       for who, v in VOICES.items()}
+        self.pcm, self.cues = [], []
 
-    def __init__(self, out_dir):
-        self.app = create_app(issuer=BASE, resource=f"{BASE}/mcp", seed=True)
-        self.client = TestClient(self.app)
-        self.token = self.app.state.auth.issue_for_testing(subject="demo-house")
-        self.dir = out_dir
-        self.clips = []
-        self.transcript = []
+    def tool(self, name, args):
+        r = self.c.post("/mcp", headers=self.h, json={
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": name, "arguments": args}}).json()["result"]
+        sc = r.get("structuredContent") or {}
+        if sc.get("checkout") and sc.get("approved"):
+            self.checkout = sc["checkout"]
+        return r["content"][0]["text"]
 
-    # --- the real server -------------------------------------------------
-    def _tool(self, name, **args):
-        r = self.client.post(
-            "/mcp",
-            json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                  "params": {"name": name, "arguments": args}},
-            headers={"Authorization": f"Bearer {self.token}"})
-        r.raise_for_status()
-        return r.json()["result"]["content"][0]["text"]
+    def pay(self, hint):
+        """The host's part, as Alexa+ checkout would do it."""
+        made = self.c.post("/checkout-sessions", headers=self.h, json={
+            "line_items": hint["line_items"], "buyer": {"first_name": "Grace"},
+            "context": {"hearth_quote": hint["quote"]}}).json()
+        done = self.c.post(f"/checkout-sessions/{made['id']}/complete",
+                           headers={**self.h, "Idempotency-Key": made["id"]}).json()
+        total = done["totals"][-1]["amount"]
+        return (f"Done. {done['line_items'][0]['item']['title']} is ordered, "
+                f"{total // 100} dollars {total % 100}, arriving tomorrow. "
+                "I've told the family.")
 
-    # --- the tape --------------------------------------------------------
-    def _speak(self, voice, text, rate=None):
-        stem = os.path.join(self.dir, f"{len(self.clips):03d}")
-        aiff, wav = stem + ".aiff", stem + ".wav"
-        cmd = ["say", "-v", voice, "-o", aiff]
-        if rate:
-            cmd += ["-r", str(rate)]
-        subprocess.run(cmd + [text], check=True, capture_output=True)
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", aiff,
-                        "-ac", "1", "-ar", "22050", wav],
-                       check=True, capture_output=True)
-        os.remove(aiff)
-        self.clips.append(wav)
-        return wav
+    def answer(self, who, said):
+        plan = sim.plan_rules(said, who, {"checkout": self.checkout})
+        out = []
+        for call in plan:
+            if call.get("host") == "checkout.complete":
+                out.append(self.pay(call["checkout"]))
+                self.checkout = None
+            else:
+                out.append(self.tool(call["name"], call["arguments"]))
+        return re.sub(r"\s*\[[0-9a-f]{6,}\]", "", " ".join(out)).strip()
 
-    def silence(self, seconds):
-        stem = os.path.join(self.dir, f"{len(self.clips):03d}.wav")
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
-                        "-i", f"anullsrc=r=22050:cl=mono", "-t", str(seconds),
-                        stem], check=True, capture_output=True)
-        self.clips.append(stem)
+    def say(self, who, text, gap=0.6):
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            self.voices[who].synthesize_wav(text.replace("$", "").replace("12.40", "12 40"), w)
+        buf.seek(0)
+        with wave.open(buf) as w:
+            rate, frames = w.getframerate(), w.readframes(w.getnframes())
+        if rate != RATE:
+            frames = _resample(frames, rate)
+        start = self.length()
+        self.pcm.append(frames)
+        self.cues.append((start, self.length(), who, text))
+        self.pcm.append(b"\0\0" * int(RATE * gap))
 
-    def backdate_last(self, seconds):
-        """Move the most recent belief back in time, for the narration's sake."""
-        house, _led, _srv = self.app.state.home_for("demo-house")
-        if house.beliefs:
-            house.beliefs[-1].stated_at -= seconds
+    def length(self):
+        return sum(len(p) for p in self.pcm) / 2 / RATE
 
-    def person(self, who, voice, line):
-        self.transcript.append((who, line))
-        print(f"  {who:>6}: \"{line}\"")
-        self._speak(voice, line)
-        self.silence(0.55)
 
-    def assistant(self, line):
-        """Say what the server said. Never what the script wished it said.
+def _resample(frames, rate):
+    with tempfile.TemporaryDirectory() as d:
+        a, b = os.path.join(d, "a.wav"), os.path.join(d, "b.wav")
+        with wave.open(a, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+            w.writeframes(frames)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a, "-ar", str(RATE),
+                        "-ac", "1", b], check=True)
+        with wave.open(b) as w:
+            return w.readframes(w.getnframes())
 
-        One thing is removed and only one: the belief reference in brackets.
-        A tool result is read by a model, which composes the spoken reply, and
-        the reference exists so it can stand a belief down later. Reading a hex
-        string aloud is not a thing any assistant does, and leaving it in would
-        misrepresent the product rather than be faithful to it. The sentence
-        itself is untouched.
-        """
-        spoken = re.sub(r"\s*\[[0-9a-f]{6,}\]", "", line).strip()
-        self.transcript.append(("Alexa", line))
-        print(f"   Alexa: {spoken}")
-        self._speak(ALEXA, spoken, rate=185)
-        self.silence(0.7)
 
-    def narrate(self, line):
-        print(f"\n  [{line}]")
-        self.transcript.append(("", f"[{line}]"))
-        self._speak("Moira", line, rate=165)
-        self.silence(0.9)
-
-    def render(self, out_path):
-        lst = os.path.join(self.dir, "list.txt")
-        with open(lst, "w") as f:
-            for c in self.clips:
-                f.write(f"file '{c}'\n")
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat",
-                        "-safe", "0", "-i", lst, "-ac", "1", "-ar", "22050",
-                        out_path], check=True, capture_output=True)
-        with wave.open(out_path) as w:
-            return w.getnframes() / float(w.getframerate())
+def _ts(t, srt=False):
+    h, rem = divmod(t, 3600)
+    m, s = divmod(rem, 60)
+    return (f"{int(h):02d}:{int(m):02d}:{s:06.3f}".replace(".", ",") if srt
+            else f"{int(m)}:{s:04.1f}")
 
 
 def main():
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)))
-    tmp = tempfile.mkdtemp(prefix="hearth-voice-")
-    r = Room(tmp)
-
-    r.narrate("Three weeks ago, during a cold snap.")
-    r.person("Dad", DAD, "Alexa, turn it up to twenty four, it's freezing.")
-    r.assistant(r._tool("remember", said="turn it up to 24 during the cold snap",
-                        speaker="Dad"))
-    # The story turns on this being old. The `remember` tool stamps the moment
-    # it is called, which is correct for a tool and wrong for a demo pretending
-    # three weeks passed, so the clock is moved back here rather than the
-    # assistant being made to say something untrue about when it was told.
-    r.backdate_last(WEEK * 3)
-
-    r.narrate("This morning.")
-    r.person("Ada", ADA, "Alexa, make it twenty.")
-    r.assistant(r._tool("remember", said="make it 20", speaker="Ada"))
-
-    # The assistant acts on its own. This is the moment that needs explaining.
-    r.assistant(r._tool("did", what="set the thermostat",
-                        domain="thermostat", slot="target"))
-
-    r.person("Ada", ADA, "Alexa, why is it so warm in here?")
-    r.assistant(r._tool("why", domain="thermostat"))
-
-    r.narrate("The cold snap ended two weeks ago. Nobody told it.")
-
-    r.person("Dad", DAD, "Alexa, the cold snap is over.")
-    r.assistant(r._tool("remember", said="the cold snap is over", speaker="Dad"))
-    r.assistant(r._tool("did", what="set the thermostat",
-                        domain="thermostat", slot="target"))
-    r.person("Ada", ADA, "Alexa, why did you change it?")
-    r.assistant(r._tool("why", domain="thermostat"))
-
-    wav = os.path.join(tmp, "demo.wav")
-    length = r.render(wav)
-    # Committed as m4a: the wav is several megabytes of a repository that goes
-    # public, and nothing about this demo needs lossless audio.
-    path = os.path.join(out, "why-did-you-do-that.m4a")
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", wav,
-                    "-c:a", "aac", "-b:a", "64k", path],
-                   check=True, capture_output=True)
-    print(f"\n  wrote {path}  ({length:.1f}s, "
-          f"{os.path.getsize(path)//1024}KB)")
-
-    with open(os.path.join(out, "transcript.md"), "w") as f:
-        f.write("# Why did you do that\n\n")
-        f.write("Every line marked **Alexa** is the response the real server "
-                "returned over HTTP, not a script.\n\n")
-        for who, line in r.transcript:
-            f.write(f"- **{who}**: {line}\n" if who else f"\n_{line}_\n\n")
-    return 0
+    here = os.path.dirname(os.path.abspath(__file__))
+    room = Room()
+    for who, line in SCRIPT:
+        print(f"  {who:>5}: {line}")
+        room.say(who, line, gap=0.45)
+        reply = room.answer(who, line)
+        print(f"  Alexa: {reply}\n")
+        room.say("Alexa", reply, gap=1.0)
+    with tempfile.TemporaryDirectory() as d:
+        wav = os.path.join(d, "demo.wav")
+        with wave.open(wav, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
+            w.writeframes(b"".join(room.pcm))
+        out = os.path.join(here, "hold-on-rose.m4a")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", wav, "-c:a", "aac",
+                        "-b:a", "64k", out], check=True)
+    with open(os.path.join(here, "transcript.md"), "w") as f:
+        f.write("# Hold on, Rose\n\nThe scenes from the simulated Alexa+ client, "
+                "rendered offline by `demo/voice.py`. Every **Alexa** line is the "
+                "text Hearth's tools returned for that request, over the real "
+                "MCP endpoint. Voices: Piper, offline.\n\n")
+        for start, end, who, text in room.cues:
+            f.write(f"- `{_ts(start)}` **{who}**: {text}\n")
+    with open(os.path.join(here, "hold-on-rose.srt"), "w") as f:
+        for i, (start, end, who, text) in enumerate(room.cues, 1):
+            f.write(f"{i}\n{_ts(start, True)} --> {_ts(end, True)}\n{who}: {text}\n\n")
+    print(f"wrote {out} ({room.length():.1f}s)")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
