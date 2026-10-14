@@ -271,11 +271,19 @@ TOOLS = [
         "name": "record",
         "title": "Show the record",
         "description": ("The server's own record of every tool call, newest first, "
-                        "with its integrity check. Use when someone asks what the "
-                        "assistant has done."),
+                        "checked against its signed checkpoints and, if the client "
+                        "passes one, a receipt it kept from an earlier call. Use "
+                        "when someone asks what the assistant has done."),
         "inputSchema": {
             "type": "object",
-            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 50}},
+            "properties": {
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                "receipt_seq": {"type": "integer", "minimum": 1, "description": (
+                    "`record.seq` from an earlier result's receipt, kept by the "
+                    "client. Optional; pass with receipt_hash.")},
+                "receipt_hash": {"type": "string", "description": (
+                    "`record.hash` from the same receipt.")},
+            },
         },
     },
 ]
@@ -399,7 +407,7 @@ class HearthMCP:
         # show the entry it was written as, and anyone can check it later.
         if isinstance(result.get("structuredContent"), dict):
             result["structuredContent"]["record"] = {
-                "seq": e.seq, "hash": e.hash[:12], "outcome": outcome}
+                "seq": e.seq, "hash": e.hash, "outcome": outcome}
         return res
 
     def _dispatch(self, msg: dict) -> dict | None:
@@ -1020,22 +1028,38 @@ class HearthMCP:
                        "status": "lost" if i["outcome"] == "refused" else "done"}
                       for i in items]}, since=since, count=len(items))
 
-    def _tool_record(self, limit=10):
-        ok, bad = self.trace.verify()
+    def _tool_record(self, limit=10, receipt_seq=None, receipt_hash=None):
+        receipt = ({"seq": receipt_seq, "hash": receipt_hash}
+                   if receipt_seq and receipt_hash else None)
+        audit = self.trace.audit(receipt)
+        ok, bad = audit["intact"], audit["broken_at"]
         recent = list(reversed(self.trace.entries))[:max(1, min(int(limit or 10), 50))]
         refused = sum(1 for e in self.trace.entries if e.outcome == "refused")
         n = len(self.trace.entries)
         calls = f"{n} call" if n == 1 else f"{n} calls"
+        held = audit["receipt"]
+        if not ok:
+            check = (f"and it does not hold up at entry {bad}: {audit['reason']}."
+                     if bad else f"and {audit['reason']}.")
+        elif held:
+            check = (f"and it matches the server's signed checkpoint and the receipt "
+                     f"this device kept from call {held['seq']}, so nothing up to "
+                     f"there has been changed or removed.")
+        else:
+            check = ("and it matches the server's signed checkpoint: nothing has "
+                     "been changed or removed without the record key.")
         line = (f"{calls} on the record, "
-                + (f"{refused} refused, " if refused else "")
-                + ("and the chain is intact: nothing has been edited or removed."
-                   if ok else f"and the chain is broken at entry {bad}."))
+                + (f"{refused} refused, " if refused else "") + check)
         return _text(line, {
             "pattern": "list", "tone": "ok" if ok else "stop",
             "eyebrow": "The record", "title": calls.capitalize(),
-            "body": "Written by the server as each call happened. "
-                    + ("Integrity check passed." if ok else f"Broken at #{bad}."),
+            "body": "Written by the server as each call happened, each one signed. "
+                    + (("Matches the signed checkpoint"
+                        + (f" and this device's receipt for #{held['seq']}." if held else "."))
+                       if ok else f"Does not hold up at #{bad}."),
             "items": [{"label": f"#{e.seq} {e.tool}", "detail": e.summary[:120],
                        "meta": carelib.when_said(e.at, self._now),
                        "status": {"ok": "done", "refused": "lost"}.get(e.outcome, "info")}
-                      for e in recent]}, intact=ok)
+                      for e in recent]}, intact=ok, broken_at=bad,
+            reason=audit["reason"], checkpoint=audit["checkpoint"],
+            receipt_checked=bool(held), public_key=self.trace.witness.public_key)

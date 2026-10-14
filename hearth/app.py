@@ -537,9 +537,11 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         """The console's state plus the two things it now has to show: the
         server's own record of calls, and the care books."""
         out = _state(household, ledger)
-        ok, bad = server.trace.verify()
+        audit = server.trace.audit()
+        ok, bad = audit["intact"], audit["broken_at"]
         book = server.care.book
-        out["record"] = {"intact": ok, "broken_at": bad,
+        out["record"] = {"intact": ok, "broken_at": bad, "reason": audit["reason"],
+                         "checkpoint": audit["checkpoint"],
                          "count": len(server.trace.entries),
                          "head": server.trace.head()[:12],
                          "entries": [e.to_dict() for e in
@@ -890,6 +892,27 @@ not use it for anything other than running the service for you.</p>
         path = os.path.join(os.path.dirname(__file__), "web", "console.html")
         with open(path) as f:
             return HTMLResponse(f.read())
+
+    # --- the record's anchor, published -----------------------------------
+    # The public key the record's checkpoints are signed with, so anyone can
+    # check a checkpoint they were given, and the newest checkpoint for the
+    # caller's household, so a client or a family member can keep a copy off
+    # this server. A copy kept elsewhere is what catches a rewrite.
+    @app.get("/.well-known/hearth-record-key")
+    async def record_key():
+        return {"alg": "Ed25519", "public_key": server.trace.witness.public_key,
+                "message": "hearth-record:{seq}:{hash}"}
+
+    @app.get("/record/checkpoint")
+    async def record_checkpoint(request: Request):
+        tok = auth.verify(request.headers.get("authorization"))
+        if tok is None:
+            return _unauthorized()
+        srv = home_for(tok.subject)[2]
+        audit = srv.trace.audit()
+        return {"count": audit["count"], "intact": audit["intact"],
+                "checkpoint": srv.trace.witness.latest(),
+                "public_key": srv.trace.witness.public_key}
 
     @app.get("/healthz")
     async def healthz():

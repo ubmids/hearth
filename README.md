@@ -49,7 +49,7 @@ why.
 | **Settles disagreements, and says how** | Tom says Mom can have coffee till six; Ada said three because it keeps her up. "Mom's coffee stops at three. Tom said six, but Ada has the say over what she eats and drinks." A medication rule from someone without the say is only a proposal: "Ada has the say over Mom's warfarin, so it stays once a day until Ada confirms." |
 | **Lets situations end** | "No wine while she's on the antibiotics" holds until "Mom finished the antibiotics", then stops applying by itself. |
 | **Buys, the Alexa+ way** | "We're nearly out of her warfarin, reorder it" prices the refill against the family's spending limit and last week's orders, and offers Pay. Per the Alexa+ payments docs, Alexa+ then opens the checkout session on Hearth's Universal Commerce Protocol endpoints, takes the PIN and the card, and completes it; in this build the simulated client plays that part against a sandbox merchant. Hearth never charges anything itself. |
-| **Keeps an honest record** | Every tool call is written by the server as it happens, hash-chained, with what it read and wrote. If the assistant reports an action it never checked with Hearth first, "why did you do that?" says so. |
+| **Keeps an honest record** | Every tool call is written by the server as it happens, with what it read and wrote. Entries are hash-chained, and after each one the server signs the new head (Ed25519) into a witness file kept apart from the record, so cutting entries off the end, or editing, deleting or reordering one and recomputing the hashes, fails the check. Every result also hands the client a receipt; a receipt kept off the server catches even a rewrite by someone holding the signing key, up to that receipt. If the assistant reports an action it never checked with Hearth first, "why did you do that?" says so. |
 | **Draws it on the screen** | Results carry an MCP Apps card (`ui://hearth/card-…`), sized for the Echo Show, and a complete spoken sentence for a speaker with no screen. |
 
 ## How it is built
@@ -58,7 +58,8 @@ why.
  Alexa+ (or the simulated client at /alexa)
     │  MCP 2025-11-25 · Streamable HTTP · OAuth 2.1 + PKCE (S256)
     ▼
- /mcp ──► HearthMCP ──► every tools/call written to the record (SHA-256 chain)
+ /mcp ──► HearthMCP ──► every tools/call written to the record (SHA-256 chain,
+                         head signed into a separate witness file, receipt to the client)
               │
               ├── beliefs: who said it, when, about whom, in what situation
               │     resolved by scope, then authority, then recency, with a reason

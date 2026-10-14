@@ -24,7 +24,7 @@ your echo". This is that skill.
   `initialize`, `notifications/initialized` and `tools/call` over Streamable
   HTTP, carries the `Mcp-Session-Id` in the Alexa session, sends
   `MCP-Protocol-Version: 2025-11-25`, and reopens a session Hearth no longer
-  knows. Every call lands on Hearth's hash-chained record, like any client's.
+  knows. Every call lands on Hearth's signed, hash-chained record, like any client's.
 - **Hearth's words, not the skill's.** The reply is the text block of Hearth's
   tool result, minus belief references like `[9fa924226edd]`. The skill writes
   only the launch and help lines, the checkout confirmation, and one safety

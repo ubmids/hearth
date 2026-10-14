@@ -20,7 +20,7 @@ from hearth import care as carelib
 from hearth.app import create_app
 from hearth.extract import detect_context_end, rule_extract
 from hearth.mcp import APP_MIME, CARD_URI, TOOLS
-from hearth.trace import Trace
+from hearth.trace import Entry, Trace
 
 ISSUER = "https://hearth.test"
 RESOURCE = f"{ISSUER}/mcp"
@@ -247,6 +247,133 @@ def test_editing_or_removing_a_record_entry_breaks_the_chain():
     print("PASS the record is tamper evident")
 
 
+def _rechain(entries):
+    """What someone who can write the record file does to hide an edit:
+    renumber and recompute every hash so the chain checks again."""
+    from hearth.trace import GENESIS
+    prev = GENESIS
+    for i, e in enumerate(entries, start=1):
+        e.seq, e.prev = i, prev
+        e.hash = e.digest()
+        prev = e.hash
+
+
+def _five():
+    t = Trace()
+    for i in range(5):
+        t.append(tool="give_dose" if i == 3 else "check_dose", args={"i": i},
+                 outcome="refused" if i == 3 else "ok", summary=str(i))
+    assert t.verify() == (True, None)
+    return t
+
+
+def test_truncating_the_tail_is_detected():
+    t = _five()
+    del t.entries[-2:]                       # hide the refusal at #4
+    assert t.verify() == (False, 4), t.audit()
+    assert "missing" in t.audit()["reason"]
+    print("PASS cutting entries off the end is detected")
+
+
+def test_an_edit_with_every_hash_recomputed_is_detected():
+    t = _five()
+    t.entries[1].summary = "something nicer"
+    _rechain(t.entries)
+    assert t.entries[1].prev == t.entries[0].hash        # the chain checks...
+    assert t.verify() == (False, 2), t.audit()           # ...the checkpoints do not
+    print("PASS an edit plus a recomputed chain is detected")
+
+
+def test_a_reorder_or_a_deletion_with_a_recomputed_chain_is_detected():
+    t = _five()
+    t.entries[1], t.entries[2] = t.entries[2], t.entries[1]
+    _rechain(t.entries)
+    assert t.verify() == (False, 2), t.audit()
+    t = _five()
+    del t.entries[3]                         # the refusal, from the middle
+    _rechain(t.entries)
+    assert t.verify()[0] is False and t.verify()[1] in (4, 5), t.audit()
+    print("PASS a reorder or a deletion, rechained, is detected")
+
+
+def test_the_same_tampering_is_detected_on_disk_after_a_restart():
+    import json as _json
+    from hearth.store import Store
+    tmp = tempfile.mkdtemp(prefix="hearth-tamper-")
+    try:
+        path = os.path.join(tmp, "house")
+        t = Trace(store=Store(path))
+        for i in range(5):
+            t.append(tool="check_dose", args={"i": i}, outcome="ok", summary=str(i))
+        f = path + ".trace.jsonl"
+        good = open(f).read().splitlines()
+
+        def rewrite(entries):
+            open(f, "w").write("".join(_json.dumps(e.to_dict(), sort_keys=True) + "\n"
+                                       for e in entries))
+            return Trace(store=Store(path)).verify()
+
+        assert Trace(store=Store(path)).verify() == (True, None)
+        open(f, "w").write("\n".join(good[:3]) + "\n")            # truncate
+        assert Trace(store=Store(path)).verify() == (False, 4)
+        es = [Entry.from_dict(_json.loads(x)) for x in good]
+        es[2].summary = "nothing happened"
+        _rechain(es)                                                # edit + rehash
+        assert rewrite(es) == (False, 3)
+        es = [Entry.from_dict(_json.loads(x)) for x in good]
+        es = [es[0], es[2], es[1], es[3], es[4]]
+        _rechain(es)                                                # reorder
+        assert rewrite(es) == (False, 2)
+        es = [Entry.from_dict(_json.loads(x)) for x in good]
+        del es[1]
+        _rechain(es)                                                # delete
+        assert rewrite(es)[0] is False
+        # Deleting the witness file too is not a way out: no checkpoints at
+        # all for a record with entries is itself a failure.
+        open(f, "w").write("\n".join(good) + "\n")
+        os.remove(path + ".witness.jsonl")
+        assert Trace(store=Store(path)).verify() == (False, 1)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("PASS truncation, edit+rehash, reorder and deletion fail on disk too")
+
+
+def test_a_receipt_kept_off_the_server_catches_a_rewrite_by_the_key_holder():
+    """Someone with the signing key can rewrite both files and re-sign. The
+    receipt a client kept from call #4 is what still catches it."""
+    t = _five()
+    receipt = {"seq": 4, "hash": t.entries[3].hash}
+    assert t.verify(receipt) == (True, None)
+    assert t.audit(receipt)["receipt"] == {"seq": 4}
+    t.entries[3].outcome, t.entries[3].summary = "ok", "logged"
+    _rechain(t.entries)
+    t.witness.checkpoints.clear()
+    for e in t.entries:
+        t.witness.sign(e.seq, e.hash)       # re-signed with the real key
+    assert t.verify() == (True, None)       # the server alone cannot tell
+    assert t.verify(receipt) == (False, 4)  # the receipt can
+    del t.entries[3:]
+    t.witness.checkpoints[:] = t.witness.checkpoints[:3]
+    assert t.verify(receipt) == (False, 4)  # and a truncation past it
+    print("PASS a client's receipt catches what the key holder could hide")
+
+
+def test_the_record_tool_checks_the_receipt_it_is_given():
+    house = House()
+    out = house.call("check_dose", medication="warfarin", asked_by="Tom")
+    rec = out["structuredContent"]["record"]
+    assert len(rec["hash"]) == 64, rec
+    reply = house.say("record", limit=3, receipt_seq=rec["seq"], receipt_hash=rec["hash"])
+    assert "receipt this device kept from call" in reply, reply
+    bad = house.say("record", limit=3, receipt_seq=rec["seq"], receipt_hash="0" * 64)
+    assert "does not hold up" in bad, bad
+    r = house.c.get("/record/checkpoint", headers=house.headers).json()
+    from hearth.trace import verify_checkpoint
+    key = house.c.get("/.well-known/hearth-record-key").json()["public_key"]
+    assert verify_checkpoint(key, r["checkpoint"]) and r["intact"] is True, r
+    print("PASS the record tool checks a receipt and publishes a signed checkpoint")
+
+
 def test_a_reported_action_says_whether_the_agent_asked_first():
     house = House()
     # Reported with no whats_true beforehand in this session.
@@ -286,7 +413,7 @@ def test_the_record_survives_a_restart_and_still_verifies():
         assert len(again.server.care.book.doses) == 1
         assert again.home[1].actions[-1].outcome == "refused"
         reply = again.say("record", limit=3)
-        assert "the chain is intact" in reply and "1 refused" in reply, reply
+        assert "matches the server's signed checkpoint" in reply and "1 refused" in reply, reply
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("PASS the record survives a restart")
@@ -505,7 +632,7 @@ def test_a_result_carries_its_card_its_speech_and_its_record_receipt():
     assert sc["card"]["tone"] == "stop" and sc["card"]["title"] == "Already taken today"
     assert sc["speech"] == r["content"][0]["text"]
     last = house.server.trace.entries[-1]
-    assert sc["record"] == {"seq": last.seq, "hash": last.hash[:12],
+    assert sc["record"] == {"seq": last.seq, "hash": last.hash,
                             "outcome": "refused"}
     # A voice-only reply carries no formatting a speaker would read out.
     assert "|" not in r["content"][0]["text"] and "*" not in r["content"][0]["text"]
@@ -657,8 +784,12 @@ def test_a_torn_last_line_is_dropped_but_damage_in_the_middle_breaks_the_chain()
             t.append(tool="check_dose", args={"i": i}, outcome="ok", summary="x")
         f = path + ".trace.jsonl"
         lines = open(f).read().splitlines()
-        # A crash mid-write: the last line is half there.
+        # A crash mid-write: the last line is half there, and the checkpoint
+        # that is written after it never was.
         open(f, "w").write("\n".join(lines[:3] + [lines[3][:20]]) + "\n")
+        w = path + ".witness.jsonl"
+        signed = open(w).read().splitlines()
+        open(w, "w").write("\n".join(signed[:3]) + "\n")
         crashed = Trace(store=Store(path))
         assert len(crashed.entries) == 3 and crashed.verify() == (True, None)
         # Somebody mangles entry 2 by hand.

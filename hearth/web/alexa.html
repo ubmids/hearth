@@ -145,7 +145,7 @@
     <h2>MCP traffic, live</h2>
     <div class="sub" id="wiresub">Every request this page sends to Hearth, and every answer.</div>
     <div class="log" id="log"></div>
-    <div class="foot" id="foot">Hearth records every tools/call server-side, hash-chained.</div>
+    <div class="foot" id="foot">Hearth records every tools/call server-side: hash-chained, each head signed, and this device keeps a receipt.</div>
   </aside>
 </main>
 <script>
@@ -181,6 +181,10 @@ for (const [k, v] of new URLSearchParams(sessionStorage.getItem("sim_flags") || 
   if (!params.has(k)) params.set(k, v);
 let step = 0, speaker = "Rose", device = "kitchen", token = null, CLIENT_ID = "", RESOURCE = "";
 let checkout = null, rpcId = 1, cardUri = null, cardHtml = null;
+// The newest record receipt {seq, hash} Hearth returned, kept here, off the
+// server. "Show me the record" presents it, so a rewrite of the record that
+// re-signs everything still fails against what this device saw.
+let receipt = null, lastMed = null;
 const sessions = {};                      // device -> Mcp-Session-Id
 const voiceHumans = params.get("voices") !== "off";
 const muted = params.get("mute") === "1";
@@ -373,7 +377,7 @@ async function converse(who, said, opts = {}) {
   if (!opts.tapped) { turn("human", who, said); await speak(said, who); }
   setLight("listening");
   const {r, ms} = await http("POST", "/sim/plan", {headers: {Authorization: "Bearer " + token},
-    body: {said, speaker: who, context: {checkout}}, label: "simulator: plan"});
+    body: {said, speaker: who, context: {checkout, medication: lastMed}}, label: "simulator: plan"});
   const plan = await r.json();
   log("plan", `planner (${plan.planner})`, plan.calls.map(c => c.name || c.host).join(" + "), plan);
   $("#planner").textContent = "planner: " + plan.planner;
@@ -383,11 +387,18 @@ async function converse(who, said, opts = {}) {
       spoken.push(await payCheckout(c.checkout));
       continue;
     }
-    const out = await mcp("tools/call", {name: c.name, arguments: c.arguments});
+    const args = {...c.arguments};
+    if (c.name === "record" && receipt && !args.receipt_seq) {
+      args.receipt_seq = receipt.seq; args.receipt_hash = receipt.hash;
+      log("host", "receipt presented", `#${receipt.seq} ${receipt.hash.slice(0, 12)}…`, receipt);
+    }
+    const out = await mcp("tools/call", {name: c.name, arguments: args});
     const res = out && out.result;
     if (!res) continue;
     spoken.push((res.content[0] || {}).text || "");
     const sc = res.structuredContent || {};
+    if (sc.record && sc.record.hash) receipt = {seq: sc.record.seq, hash: sc.record.hash};
+    if (sc.medication !== undefined) lastMed = sc.medication;
     if (sc.checkout && sc.approved) checkout = sc.checkout;
     if (sc.card && sc.card.tone === "stop") tone = "stop";
     if (sc.card) showResult(res);

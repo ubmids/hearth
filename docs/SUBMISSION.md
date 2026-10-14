@@ -110,7 +110,12 @@ family's shared memory and its conscience.
   simulated client plays that part against a sandbox merchant. Hearth never
   charges anything itself.
 - **It keeps an honest record.** The server writes down every tool call as it
-  happens, with what it read and what it wrote, in a hash chain. If the
+  happens, with what it read and what it wrote, in a hash chain whose head it
+  signs after every call into a witness file kept apart from the record.
+  Truncating it, or editing, deleting or reordering an entry and recomputing
+  the hashes, fails the check. Each result hands the client a receipt, and
+  "show me the record" checks the receipt the device kept, which catches a
+  rewrite even by someone holding the signing key, up to that receipt. If the
   assistant reports an action it never checked with Hearth first, "why did you
   do that?" says so.
 - **It draws on the screen and talks on a speaker.** Results carry an MCP Apps
@@ -178,8 +183,9 @@ The day the Alexa+ toolkit opens: `alexa-ai new mcp --mcp-server-url
 https://…/mcp`. Then a per-voice speaker identifier from Alexa+ (friction log
 entry 8), so that who has the say over medication no longer depends on the
 model naming the speaker. After that, pharmacy and ride partners through the
-same UCP and tool surfaces, and a signed daily digest of the record sent to the
-family, so that even the operator cannot rewrite it unnoticed.
+same UCP and tool surfaces, and the signed checkpoint pushed to each family
+member's phone every day, so that every entry before it is covered by a copy
+the operator does not hold.
 
 ## Open Source mini challenge
 

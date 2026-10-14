@@ -88,7 +88,7 @@
              <div class="det">${esc(i.detail)}</div>
              ${i.meta ? `<div class="meta">${esc(i.meta)}</div>` : ""}</div>
       </li>`).join("");
-    const rec = sc.record ? `<span class="rec">recorded #${esc(sc.record.seq)} · ${esc(sc.record.hash)}</span>` : "";
+    const rec = sc.record ? `<span class="rec">recorded #${esc(sc.record.seq)} · ${esc(String(sc.record.hash).slice(0, 12))}</span>` : "";
     root.innerHTML = `
       <div class="eyebrow">${esc(c.eyebrow)}</div>
       <h1 class="${String(c.title || "").length > 26 ? "long" : ""}">${esc(c.title)}</h1>

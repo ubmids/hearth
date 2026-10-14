@@ -37,3 +37,7 @@ conformance-results/
 conformance-all/
 skill/lambda/config.json
 local-model/
+
+# The record's signing key and checkpoints, if a data path is inside the repo
+hearth-record.key
+*.witness.jsonl

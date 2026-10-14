@@ -20,8 +20,12 @@ Now the server writes the record itself. `HearthMCP.handle` wraps every
 `Household.resolve`, not claimed by the tool), the ids written (beliefs whose
 status changed, new doses, rides, board posts, checkouts), the ledger action if
 one was taken, the MCP session, and the time it took. Entries are SHA-256
-chained (`prev` + canonical JSON), so editing or deleting one breaks
-`Trace.verify()` at that entry. Checkout calls, which are REST rather than MCP,
+chained (`prev` + canonical JSON), and after each append the server signs
+`(seq, hash)` with an Ed25519 key and appends that checkpoint to a separate
+witness file (`<data>.witness.jsonl`, or `HEARTH_WITNESS_DIR`). The key comes
+from `HEARTH_RECORD_KEY` (else a key file, else one per process) and is never in
+the record file. `Trace.audit()` checks the chain, then every checkpoint
+against the entry at its seq, then the newest signature. Checkout calls, which are REST rather than MCP,
 and console actions go on the same record.
 
 Two consequences:
@@ -35,10 +39,23 @@ Two consequences:
   so: *"That action was reported to me afterwards; I was not asked before it
   was taken."*
 
-What the chain does not prove: that the operator of the server did not rewrite
-the whole file and recompute every hash. Anchoring the head hash somewhere the
-operator cannot write (a signed daily digest sent to the family) is the obvious
-next step and is not built.
+What each layer catches (all tested in `tests/test_care.py`):
+
+| change to the record | chain alone | + signed checkpoints | + a client's receipt |
+|---|---|---|---|
+| edit one entry, hashes left alone | caught | caught | caught |
+| cut entries off the end | **missed** | caught | caught |
+| edit, delete or reorder, then recompute every hash | **missed** | caught | caught |
+| delete the witness file too | **missed** | caught (no checkpoints) | caught |
+| rewrite both files and re-sign with the real key | **missed** | **missed** | caught, up to the receipt's seq |
+
+Every tool result carries `structuredContent.record = {seq, hash}`. The
+simulated client keeps the newest one and passes it to `record` as
+`receipt_seq`/`receipt_hash`. The public key is at
+`/.well-known/hearth-record-key` and the newest checkpoint at
+`/record/checkpoint`, so a family member or any client can keep its own copy.
+What is still not covered: entries written after the newest receipt anyone
+kept, by someone who holds the key.
 
 ## Live
 

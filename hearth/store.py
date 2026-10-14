@@ -75,6 +75,7 @@ class Store:
                 # A record written by the old whole-file format moves over once.
                 legacy = self._read(f"{self.path}.trace.json") or []
                 if legacy:
+                    self.migrated_legacy = True
                     with open(path, "w") as f:
                         f.writelines(json.dumps(e, sort_keys=True) + "\n"
                                      for e in legacy)
@@ -95,6 +96,20 @@ class Store:
                                 "args": {}, "outcome": "error", "summary": line[:80],
                                 "hash": "unreadable"})
             return out
+
+    def witness_paths(self):
+        """(witness file, key file) for the record's signed checkpoints.
+
+        Kept out of the record file on purpose, and out of the data
+        directory when HEARTH_WITNESS_DIR names another place. In production
+        the key comes from HEARTH_RECORD_KEY, so it is not on the volume at
+        all."""
+        d = os.getenv("HEARTH_WITNESS_DIR") or os.path.dirname(os.path.abspath(self.path))
+        os.makedirs(d, exist_ok=True)
+        base = os.path.basename(self.path)
+        return (os.path.join(d, base + ".witness.jsonl"),
+                os.path.join(os.path.dirname(os.path.abspath(self.path)),
+                             "hearth-record.key"))
 
     def append_trace(self, entry: dict):
         with self._lock:
