@@ -161,7 +161,7 @@ def plan_model(said, speaker, tools, context=None):
                                   + "\n\n" + skill_instructions()},
                                  {"role": "user",
                                   "content": f"{speaker} says: {said}"}]},
-                       timeout=12.0)
+                       timeout=float(os.getenv("HEARTH_SIM_LLM_TIMEOUT", "12")))
         r.raise_for_status()
         calls = r.json()["choices"][0]["message"].get("tool_calls") or []
         out = [{"name": c["function"]["name"],
@@ -174,11 +174,40 @@ def plan_model(said, speaker, tools, context=None):
         return None
 
 
+def configured() -> bool:
+    return bool((os.getenv("HEARTH_SIM_LLM_BASE_URL") or os.getenv("HEARTH_LLM_BASE_URL"))
+                and (os.getenv("HEARTH_SIM_LLM_API_KEY") or os.getenv("HEARTH_LLM_API_KEY")))
+
+
+def warm_up(tools) -> bool:
+    """One throwaway plan, so a local model has the 2,700-token prefix (system
+    prompt, Agent Skill, tool list) in its cache before anyone speaks. Measured
+    on a 3B model on CPU: the first call costs about 15 s of prompt
+    processing and later ones reuse it. Returns whether the model answered."""
+    if not configured():
+        return False
+    timeout = os.environ.get("HEARTH_SIM_LLM_TIMEOUT")
+    os.environ["HEARTH_SIM_LLM_TIMEOUT"] = os.getenv("HEARTH_SIM_LLM_WARMUP_TIMEOUT", "120")
+    try:
+        return plan_model("Has Mom had her warfarin today?", "Tom", tools) is not None
+    finally:
+        if timeout is None:
+            os.environ.pop("HEARTH_SIM_LLM_TIMEOUT", None)
+        else:
+            os.environ["HEARTH_SIM_LLM_TIMEOUT"] = timeout
+
+
 def plan(said, speaker, tools, context=None) -> dict:
     ctx = context or {}
     rules = plan_rules(said, speaker, ctx)
     if rules and "host" in rules[0]:
         return {"planner": "rules", "calls": rules}       # the host's own step
+    if rules and rules[0].get("name") == "give_dose":
+        # Somebody is about to take a medicine. That is the one call that must
+        # never depend on a model's reading: a 3B model on CPU sent "Alexa,
+        # time for my warfarin" to `remember`, and the refusal never ran
+        # (docs/LOCAL_PLANNER.md). The rules route it; the model plans the rest.
+        return {"planner": "rules (dose guard)", "calls": rules}
     calls = plan_model(said, speaker, tools, ctx)
     if calls:
         model = (os.getenv("HEARTH_SIM_LLM_MODEL") or os.getenv("HEARTH_LLM_MODEL")

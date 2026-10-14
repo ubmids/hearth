@@ -36,3 +36,4 @@ tmp/
 conformance-results/
 conformance-all/
 skill/lambda/config.json
+local-model/

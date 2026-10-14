@@ -859,12 +859,8 @@ not use it for anything other than running the service for you.</p>
     async def sim_config(request: Request):
         if auth.verify(request.headers.get("authorization")) is None:
             return _unauthorized()
-        configured = bool((os.getenv("HEARTH_SIM_LLM_BASE_URL") or
-                           os.getenv("HEARTH_LLM_BASE_URL")) and
-                          (os.getenv("HEARTH_SIM_LLM_API_KEY") or
-                           os.getenv("HEARTH_LLM_API_KEY")))
         return {"tts": sim.tts_provider(),
-                "planner": "model + skill:hearth-care" if configured else "rules",
+                "planner": "model + skill:hearth-care" if sim.configured() else "rules",
                 "simulated": True}
 
     @app.post("/sim/plan")
@@ -903,6 +899,17 @@ not use it for anything other than running the service for you.</p>
                 "keepalive": bool(app.state.keepalive_task)}
 
     app.state.keepalive_task = None
+
+    @app.on_event("startup")
+    async def _warm_the_planner():
+        # A local model on CPU takes ~15 s on its first prompt and ~0 on the
+        # shared prefix after that, so warm it before the first scene, off the
+        # event loop. Opt in with HEARTH_SIM_LLM_WARMUP=1.
+        if os.getenv("HEARTH_SIM_LLM_WARMUP", "0") in ("1", "true", "yes") \
+                and sim.configured():
+            import threading
+            from .mcp import TOOLS
+            threading.Thread(target=sim.warm_up, args=(TOOLS,), daemon=True).start()
 
     @app.on_event("startup")
     async def _start_keepalive():

@@ -110,8 +110,8 @@ def test_a_configured_model_plans_with_hearths_own_tool_list_and_falls_back():
         sent = {f["function"]["name"] for f in STUB["seen"]["tools"]}
         assert sent == {t["name"] for t in TOOLS}
         STUB["status"] = 500
-        out = sim.plan("Alexa, I'm just going to take my blood thinner.", "Rose", TOOLS)
-        assert out["planner"] == "rules" and out["calls"][0]["name"] == "give_dose"
+        out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)
+        assert out["planner"] == "rules" and out["calls"][0]["name"] == "check_dose"
     finally:
         STUB["status"] = 200
         for k in ("HEARTH_SIM_LLM_BASE_URL", "HEARTH_SIM_LLM_API_KEY",
@@ -208,6 +208,74 @@ def test_the_hero_line_survives_the_ways_people_actually_say_it():
                        ("Mom takes one warfarin a day", "remember")):
         assert sim.plan_rules(said, "Ada")[0]["name"] == tool, said
     print("PASS the refusal is reached however the dose is announced")
+
+
+def test_a_slow_local_model_gets_its_own_timeout_and_a_warm_up():
+    """Audit 028 #9. A 3B model on CPU measured 2-12 s per line and ~19 s on
+    the first prompt, past the planner's fixed 12 s. The timeout is now
+    configurable, and warm_up() spends the first prompt before anyone speaks;
+    a model that times out still falls back to the rules."""
+    import time as _time
+
+    class Slow(Stub):
+        def do_POST(self):
+            _time.sleep(STUB.get("delay", 0))
+            try:
+                Stub.do_POST(self)
+            except (BrokenPipeError, ConnectionResetError):
+                pass                       # the planner gave up first, as meant
+
+    srv = HTTPServer(("127.0.0.1", 0), Slow)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    os.environ.update(HEARTH_SIM_LLM_BASE_URL=f"http://127.0.0.1:{srv.server_port}",
+                      HEARTH_SIM_LLM_API_KEY="local", HEARTH_SIM_LLM_MODEL="qwen-3b")
+    try:
+        STUB["reply"] = {"tool_calls": [{"function": {
+            "name": "give_dose",
+            "arguments": json.dumps({"medication": "blood thinner", "given_by": "Rose"})}}]}
+        STUB["delay"] = 0.6
+        os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "0.2"
+        out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)
+        assert out["planner"] == "rules" and out["calls"][0]["name"] == "check_dose", out
+        os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "5"
+        out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)
+        assert out["planner"] == "model:qwen-3b + skill:hearth-care", out
+        os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "0.2"
+        assert sim.warm_up(TOOLS) is True, "warm-up used the short timeout"
+        assert os.environ["HEARTH_SIM_LLM_TIMEOUT"] == "0.2", "warm-up leaked its timeout"
+    finally:
+        STUB["delay"] = 0
+        for k in ("HEARTH_SIM_LLM_BASE_URL", "HEARTH_SIM_LLM_API_KEY",
+                  "HEARTH_SIM_LLM_MODEL", "HEARTH_SIM_LLM_TIMEOUT"):
+            os.environ.pop(k, None)
+        srv.shutdown()
+    assert sim.warm_up(TOOLS) is False, "warmed a model nobody configured"
+    print("PASS a slow local model has its own timeout and a warm-up")
+
+
+def test_a_dose_announcement_never_depends_on_the_model():
+    """Measured: Qwen2.5-3B planned "Alexa, time for my warfarin" as
+    `remember`, so the refusal would never have run. A dose being taken is
+    routed by the rules whatever the model would say; the rest is the model's."""
+    srv = HTTPServer(("127.0.0.1", 0), Stub)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    os.environ.update(HEARTH_SIM_LLM_BASE_URL=f"http://127.0.0.1:{srv.server_port}",
+                      HEARTH_SIM_LLM_API_KEY="k", HEARTH_SIM_LLM_MODEL="small")
+    try:
+        STUB["reply"] = {"tool_calls": [{"function": {"name": "remember", "arguments":
+            json.dumps({"said": "Rose says: Alexa, time for my warfarin",
+                        "speaker": "Rose"})}}]}
+        out = sim.plan("Alexa, time for my warfarin", "Rose", TOOLS)
+        assert out == {"planner": "rules (dose guard)", "calls": [{"name": "give_dose",
+                       "arguments": {"medication": "warfarin", "given_by": "Rose"}}]}, out
+        out = sim.plan("Mom finished the antibiotics.", "Ada", TOOLS)
+        assert out["planner"] == "model:small + skill:hearth-care", out
+    finally:
+        for k in ("HEARTH_SIM_LLM_BASE_URL", "HEARTH_SIM_LLM_API_KEY",
+                  "HEARTH_SIM_LLM_MODEL"):
+            os.environ.pop(k, None)
+        srv.shutdown()
+    print("PASS a dose announcement is routed by the rules, whatever the model says")
 
 
 if __name__ == "__main__":
