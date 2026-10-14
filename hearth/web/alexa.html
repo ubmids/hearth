@@ -118,6 +118,17 @@
   .tag.refused{color:var(--stop);border-color:#6b2a1e}
   .tag.ok{color:var(--ok);border-color:#24432e}
   .foot{padding:8px 18px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
+  .pill.warn{color:var(--stop);border-color:#6b2a1e}
+  .speaking-as{display:none;color:var(--muted);font-size:13px;white-space:nowrap}
+  /* Film mode (?film=1): the device and the conversation, full width. No
+     scene button, no persona chips; the traffic panel slides in on T. */
+  body.film .next, body.film .who{display:none}
+  body.film .speaking-as{display:block}
+  body.film main{grid-template-columns:minmax(0,1fr) 0;transition:grid-template-columns .35s ease}
+  body.film.wire-on main{grid-template-columns:minmax(0,1.25fr) minmax(420px,.9fr)}
+  body.film .wire{overflow:hidden}
+  .notready{display:none;position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:9;
+            background:#2a120d;border:1px solid #6b2a1e;color:#ffb4a3;border-radius:10px;padding:10px 16px;font-size:14px}
 </style>
 <header>
   <div class="brand">hearth<span>.</span></div>
@@ -128,6 +139,7 @@
   <div class="pill" id="voice">voice …</div>
   <div class="pill" id="planner">planner …</div>
 </header>
+<div class="notready" id="notready">Not ready to film: no model planner is configured, so the offline rules would plan. See docs/OWNER_TODO.md.</div>
 <main>
   <section class="stage">
     <div class="devices" id="devices"></div>
@@ -135,6 +147,7 @@
     <div class="talk" id="talk"></div>
     <div class="say">
       <div class="who" id="who"></div>
+      <div class="speaking-as" id="speakingAs"></div>
       <input id="said" placeholder="Say something to Alexa…" autocomplete="off">
       <button class="btn" id="mic" title="Speak (Chrome)">Mic</button>
       <button class="btn primary" id="send">Send</button>
@@ -187,6 +200,8 @@ let checkout = null, rpcId = 1, cardUri = null, cardHtml = null;
 let receipt = null, lastMed = null;
 const sessions = {};                      // device -> Mcp-Session-Id
 const voiceHumans = params.get("voices") !== "off";
+const film = params.get("film") === "1";
+if (film) document.body.classList.add("film");
 const muted = params.get("mute") === "1";
 
 // --- the traffic panel ------------------------------------------------------
@@ -380,7 +395,7 @@ async function converse(who, said, opts = {}) {
     body: {said, speaker: who, context: {checkout, medication: lastMed}}, label: "simulator: plan"});
   const plan = await r.json();
   log("plan", `planner (${plan.planner})`, plan.calls.map(c => c.name || c.host).join(" + "), plan);
-  $("#planner").textContent = "planner: " + plan.planner;
+  if (!plan.planner.startsWith("host")) $("#planner").textContent = "planner: " + plan.planner;
   const spoken = []; let tone = "";
   for (const c of plan.calls) {
     if (c.host === "checkout.complete") {
@@ -448,6 +463,7 @@ async function payCheckout(hint) {
 
 // --- people, script, input --------------------------------------------------
 function drawWho() {
+  $("#speakingAs").textContent = `${speaker}, on the ${DEVICES[PEOPLE[speaker] || device].name}`;
   $("#who").innerHTML = Object.keys(PEOPLE).map(p =>
     `<button class="${p === speaker ? "on" : ""}" onclick="setWho('${p}')">${p}</button>`).join("");
 }
@@ -472,7 +488,23 @@ async function send() {
 }
 $("#send").onclick = send;
 $("#said").addEventListener("keydown", e => { if (e.key === "Enter") send(); });
-document.addEventListener("keydown", e => { if (e.key === "ArrowRight" && document.activeElement !== $("#said")) nextScene(); });
+document.addEventListener("keydown", e => {
+  if (document.activeElement === $("#said")) return;
+  if (e.key === "ArrowRight") film ? typeNext() : nextScene();
+  if (film && (e.key === "t" || e.key === "T")) document.body.classList.toggle("wire-on");
+});
+// Film mode: the next person's line is typed into the box and sent, as a
+// person at the keyboard would; the model planner then reads it like any
+// other line. Nothing on screen says which line comes next.
+async function typeNext() {
+  if (busy || step >= SCRIPT.length) return;
+  const [who, line] = SCRIPT[step++];
+  setWho(who);
+  const box = $("#said"); box.value = "";
+  for (const ch of line) { box.value += ch; await new Promise(r => setTimeout(r, 22)); }
+  await new Promise(r => setTimeout(r, 250));
+  send();
+}
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 if (SR) {
   $("#mic").onclick = () => {
@@ -523,6 +555,7 @@ async function connect() {
   ttsProvider = cfg.tts;
   $("#voice").textContent = "voice: " + ({polly: "Amazon Polly neural", piper: "Piper neural (offline)", browser: "browser voice"}[cfg.tts] || cfg.tts);
   $("#planner").textContent = "planner: " + cfg.planner;
+  if (film && !cfg.model) { $("#notready").style.display = "block"; $("#planner").classList.add("warn"); }
   await openSession(device);
   await mcp("tools/list", {});
   const res = await mcp("resources/list", {});

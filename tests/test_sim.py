@@ -111,7 +111,7 @@ def test_a_configured_model_plans_with_hearths_own_tool_list_and_falls_back():
         assert sent == {t["name"] for t in TOOLS}
         STUB["status"] = 500
         out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)
-        assert out["planner"] == "rules" and out["calls"][0]["name"] == "check_dose"
+        assert out["planner"] == "offline rules" and out["calls"][0]["name"] == "check_dose"
     finally:
         STUB["status"] = 200
         for k in ("HEARTH_SIM_LLM_BASE_URL", "HEARTH_SIM_LLM_API_KEY",
@@ -177,7 +177,7 @@ def test_the_simulator_endpoints_are_behind_the_bearer_and_say_what_they_are():
     tok = app.state.auth.issue_for_testing(subject="sim")
     h = {"Authorization": f"Bearer {tok}"}
     cfg = c.get("/sim/config", headers=h).json()
-    assert cfg["simulated"] is True and cfg["planner"] in ("rules", "model + skill:hearth-care")
+    assert cfg["simulated"] is True and cfg["planner"] == "offline rules" and cfg["model"] is False
     plan = c.post("/sim/plan", json={"said": "Alexa, what did I miss?",
                                      "speaker": "Tom"}, headers=h).json()
     assert plan["calls"] == [{"name": "catch_up", "arguments": {"person": "Tom"}}]
@@ -236,7 +236,7 @@ def test_a_slow_local_model_gets_its_own_timeout_and_a_warm_up():
         STUB["delay"] = 0.6
         os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "0.2"
         out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)
-        assert out["planner"] == "rules" and out["calls"][0]["name"] == "check_dose", out
+        assert out["planner"] == "offline rules" and out["calls"][0]["name"] == "check_dose", out
         os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "5"
         out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)
         assert out["planner"] == "model:qwen-3b + skill:hearth-care", out
@@ -266,8 +266,15 @@ def test_a_dose_announcement_never_depends_on_the_model():
             json.dumps({"said": "Rose says: Alexa, time for my warfarin",
                         "speaker": "Rose"})}}]}
         out = sim.plan("Alexa, time for my warfarin", "Rose", TOOLS)
-        assert out == {"planner": "rules (dose guard)", "calls": [{"name": "give_dose",
-                       "arguments": {"medication": "warfarin", "given_by": "Rose"}}]}, out
+        assert out == {"planner": "model:small + skill:hearth-care · dose guard",
+                       "calls": [{"name": "give_dose", "arguments": {
+                           "medication": "warfarin", "given_by": "Rose"}}]}, out
+        # A model that does route the dose itself is simply used.
+        STUB["reply"] = {"tool_calls": [{"function": {"name": "give_dose", "arguments":
+            json.dumps({"medication": "blood thinner", "given_by": "Rose"})}}]}
+        out = sim.plan("Alexa, I'm just going to take my blood thinner.", "Rose", TOOLS)
+        assert out["planner"] == "model:small + skill:hearth-care", out
+        assert out["calls"][0]["arguments"]["medication"] == "blood thinner", out
         out = sim.plan("Mom finished the antibiotics.", "Ada", TOOLS)
         assert out["planner"] == "model:small + skill:hearth-care", out
     finally:
@@ -276,6 +283,133 @@ def test_a_dose_announcement_never_depends_on_the_model():
             os.environ.pop(k, None)
         srv.shutdown()
     print("PASS a dose announcement is routed by the rules, whatever the model says")
+
+
+class Converse(BaseHTTPRequestHandler):
+    """A fake Bedrock runtime: records the Converse request, answers with
+    toolUse blocks the way the real API does."""
+    seen = {}
+
+    def do_POST(self):
+        Converse.seen = {"path": self.path, "headers": dict(self.headers),
+                         "body": json.loads(self.rfile.read(int(self.headers["Content-Length"])))}
+        out = json.dumps({"output": {"message": {"role": "assistant", "content": [
+            {"text": "Checking."},
+            {"toolUse": {"toolUseId": "t1", "name": "give_dose",
+                         "input": {"medication": "blood thinner", "given_by": "Rose"}}}]}},
+            "stopReason": "tool_use"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def log_message(self, *a):
+        pass
+
+
+BEDROCK_ENV = ("HEARTH_BEDROCK_MODEL", "HEARTH_BEDROCK_ENDPOINT", "AWS_BEARER_TOKEN_BEDROCK",
+               "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION",
+               "HEARTH_SIM_LLM_PROVIDER", "HEARTH_SIM_LLM_BASE_URL",
+               "HEARTH_SIM_LLM_API_KEY", "HEARTH_SIM_LLM_MODEL")
+
+
+def _clean_env():
+    saved = {k: os.environ.pop(k, None) for k in BEDROCK_ENV}
+    return saved
+
+
+def _restore(saved):
+    for k in BEDROCK_ENV:
+        os.environ.pop(k, None)
+        if saved.get(k) is not None:
+            os.environ[k] = saved[k]
+
+
+def test_a_bedrock_model_plans_through_converse_with_hearths_tools():
+    saved = _clean_env()
+    srv = HTTPServer(("127.0.0.1", 0), Converse)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        assert sim.providers() == [] and sim.planner_label() == "offline rules"
+        model = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+        os.environ.update(HEARTH_BEDROCK_MODEL=model, AWS_BEARER_TOKEN_BEDROCK="bedrock-key",
+                          HEARTH_BEDROCK_ENDPOINT=f"http://127.0.0.1:{srv.server_port}")
+        assert sim.providers() == ["bedrock"]
+        out = sim.plan("Alexa, I'm just going to take my blood thinner.", "Rose", TOOLS)
+        assert out["planner"] == f"model:{model} on Amazon Bedrock + skill:hearth-care", out
+        assert out["calls"] == [{"name": "give_dose", "arguments": {
+            "medication": "blood thinner", "given_by": "Rose"}}], out
+        seen = Converse.seen
+        assert seen["path"] == "/model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/converse"
+        assert seen["headers"]["authorization"] == "Bearer bedrock-key"
+        b = seen["body"]
+        assert {t["toolSpec"]["name"] for t in b["toolConfig"]["tools"]} == {t["name"] for t in TOOLS}
+        assert b["toolConfig"]["toolChoice"] == {"any": {}}
+        assert "Say refusals as given" in b["system"][0]["text"]
+        assert b["messages"][0]["content"][0]["text"].startswith("Rose says: ")
+        # A question is never a dose, even when the model says give_dose.
+        out = sim.plan("Should I take my blood thinner now?", "Rose", TOOLS)
+        assert out["calls"][0]["name"] == "check_dose" and out["planner"].endswith("dose guard")
+        # With AWS keys instead of an API key, the request is SigV4 signed.
+        del os.environ["AWS_BEARER_TOKEN_BEDROCK"]
+        os.environ.update(AWS_ACCESS_KEY_ID="AKIDEXAMPLE",
+                          AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
+        sim.plan("Alexa, I'm just going to take my blood thinner.", "Rose", TOOLS)
+        auth = Converse.seen["headers"]["authorization"]
+        assert auth.startswith("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/") and \
+            "/us-east-1/bedrock/aws4_request" in auth, auth
+    finally:
+        srv.shutdown()
+        _restore(saved)
+    print("PASS a Bedrock model plans through Converse, bearer or SigV4")
+
+
+def test_bedrock_failing_falls_back_to_the_openai_compatible_model_then_rules():
+    saved = _clean_env()
+    srv = HTTPServer(("127.0.0.1", 0), Stub)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        os.environ.update(HEARTH_BEDROCK_MODEL="amazon.nova-pro-v1:0",
+                          AWS_BEARER_TOKEN_BEDROCK="k",
+                          HEARTH_BEDROCK_ENDPOINT="http://127.0.0.1:9",   # nothing listens
+                          HEARTH_SIM_LLM_BASE_URL=f"http://127.0.0.1:{srv.server_port}",
+                          HEARTH_SIM_LLM_API_KEY="k", HEARTH_SIM_LLM_MODEL="fallback-1")
+        STUB["reply"] = {"tool_calls": [{"function": {"name": "catch_up",
+                         "arguments": json.dumps({"person": "Tom"})}}]}
+        out = sim.plan("What did I miss?", "Tom", TOOLS)
+        assert out["planner"] == "model:fallback-1 + skill:hearth-care", out
+        assert sim.LAST["error"].startswith("bedrock:"), sim.LAST
+        STUB["status"] = 500
+        out = sim.plan("What did I miss?", "Tom", TOOLS)
+        assert out["planner"] == "offline rules", out
+        os.environ["HEARTH_SIM_LLM_PROVIDER"] = "rules"
+        assert sim.providers() == []
+    finally:
+        STUB["status"] = 200
+        srv.shutdown()
+        _restore(saved)
+    print("PASS Bedrock, then the OpenAI-compatible model, then the offline rules")
+
+
+def test_the_sigv4_canonical_path_encodes_a_model_id_twice():
+    import datetime as _dt
+    saved = _clean_env()
+    try:
+        os.environ.update(HEARTH_BEDROCK_MODEL="amazon.nova-pro-v1:0",
+                          AWS_ACCESS_KEY_ID="AKIDEXAMPLE",
+                          AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
+        when = _dt.datetime(2026, 10, 14, 12, 0, 0, tzinfo=_dt.timezone.utc)
+        url, h, _ = sim.bedrock_request({"x": 1}, now=when)
+        assert url == ("https://bedrock-runtime.us-east-1.amazonaws.com"
+                       "/model/amazon.nova-pro-v1%3A0/converse"), url
+        h2 = sim._sigv4("POST", "bedrock-runtime.us-east-1.amazonaws.com",
+                        "/model/amazon.nova-pro-v1%253A0/converse", '{"x": 1}',
+                        "bedrock", "us-east-1", when)
+        assert h["authorization"] == h2["authorization"]
+    finally:
+        _restore(saved)
+    print("PASS the Bedrock path is double-encoded in the canonical request")
 
 
 if __name__ == "__main__":

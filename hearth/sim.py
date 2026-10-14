@@ -200,48 +200,171 @@ def skill_instructions() -> str:
     return text.strip()
 
 
-def plan_model(said, speaker, tools, context=None):
-    """Plan with any OpenAI-compatible model, using Hearth's own tool list.
+def _user_turn(said, speaker, ctx) -> str:
+    """What the model is told about this turn: who spoke, what they said, and
+    the two bits of conversation state a host would carry."""
+    lines = [f"{speaker} says: {said}"]
+    if ctx.get("medication"):
+        lines.append(f"(The last medicine discussed was {ctx['medication']}.)")
+    if ctx.get("device"):
+        lines.append(f"(Heard on: {ctx['device']}.)")
+    return "\n".join(lines)
 
-    Returns None when no model is configured or the call fails, and the caller
-    falls back to the rules. Configured by HEARTH_SIM_LLM_BASE_URL / _API_KEY /
-    _MODEL, falling back to the extraction model's HEARTH_LLM_* settings.
-    """
+
+def _system() -> str:
+    return PLANNER_SYSTEM + "\n\n" + skill_instructions()
+
+
+# --- providers ----------------------------------------------------------------
+# Which model stands in for Alexa+'s, chosen by environment:
+#
+#   HEARTH_SIM_LLM_PROVIDER  bedrock | openai | rules | auto (default)
+#   bedrock: HEARTH_BEDROCK_MODEL (a model or inference profile id),
+#            AWS_REGION, and either AWS_BEARER_TOKEN_BEDROCK (a Bedrock API
+#            key) or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (SigV4).
+#   openai:  HEARTH_SIM_LLM_BASE_URL, HEARTH_SIM_LLM_API_KEY,
+#            HEARTH_SIM_LLM_MODEL (any OpenAI-compatible endpoint).
+#
+# auto tries Bedrock first when it is configured, then the OpenAI-compatible
+# endpoint, then the offline rules. Alexa+ itself runs on Bedrock, which is
+# why it is first.
+
+def _bedrock_ready() -> bool:
+    return bool(os.getenv("HEARTH_BEDROCK_MODEL") and (
+        os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+        or (os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"))))
+
+
+def _openai_ready() -> bool:
+    return bool((os.getenv("HEARTH_SIM_LLM_BASE_URL") or os.getenv("HEARTH_LLM_BASE_URL"))
+                and (os.getenv("HEARTH_SIM_LLM_API_KEY") or os.getenv("HEARTH_LLM_API_KEY")))
+
+
+def providers() -> list[str]:
+    """The model providers to try, in order. Empty means the offline rules."""
+    want = os.getenv("HEARTH_SIM_LLM_PROVIDER", "auto").lower()
+    if want == "rules":
+        return []
+    order = {"bedrock": ["bedrock", "openai"], "openai": ["openai"]}.get(
+        want, ["bedrock", "openai"])
+    ready = {"bedrock": _bedrock_ready, "openai": _openai_ready}
+    return [p for p in order if ready[p]()]
+
+
+def _openai_model() -> str:
+    return (os.getenv("HEARTH_SIM_LLM_MODEL") or os.getenv("HEARTH_LLM_MODEL")
+            or "gpt-4o-mini")
+
+
+def model_label(provider: str) -> str:
+    if provider == "bedrock":
+        return f"model:{os.getenv('HEARTH_BEDROCK_MODEL')} on Amazon Bedrock"
+    return f"model:{_openai_model()}"
+
+
+def _timeout() -> float:
+    return float(os.getenv("HEARTH_SIM_LLM_TIMEOUT", "12"))
+
+
+def plan_openai(said, speaker, tools, context=None):
+    """Plan with any OpenAI-compatible chat completions endpoint."""
+    import httpx
     base = os.getenv("HEARTH_SIM_LLM_BASE_URL") or os.getenv("HEARTH_LLM_BASE_URL")
     key = os.getenv("HEARTH_SIM_LLM_API_KEY") or os.getenv("HEARTH_LLM_API_KEY")
-    model = (os.getenv("HEARTH_SIM_LLM_MODEL") or os.getenv("HEARTH_LLM_MODEL")
-             or "gpt-4o-mini")
-    if not (base and key):
-        return None
-    try:
-        import httpx
-        fns = [{"type": "function", "function": {
-            "name": t["name"], "description": t["description"],
-            "parameters": t["inputSchema"]}} for t in tools]
-        r = httpx.post(f"{base.rstrip('/')}/chat/completions",
-                       headers={"Authorization": f"Bearer {key}"},
-                       json={"model": model, "temperature": 0, "tools": fns,
-                             "messages": [
-                                 {"role": "system", "content": PLANNER_SYSTEM
-                                  + "\n\n" + skill_instructions()},
-                                 {"role": "user",
-                                  "content": f"{speaker} says: {said}"}]},
-                       timeout=float(os.getenv("HEARTH_SIM_LLM_TIMEOUT", "12")))
-        r.raise_for_status()
-        calls = r.json()["choices"][0]["message"].get("tool_calls") or []
-        out = [{"name": c["function"]["name"],
-                "arguments": json.loads(c["function"].get("arguments") or "{}")}
-               for c in calls]
-        known = {t["name"] for t in tools}
-        out = [c for c in out if c["name"] in known]
-        return out or None
-    except Exception:
-        return None
+    fns = [{"type": "function", "function": {
+        "name": t["name"], "description": t["description"],
+        "parameters": t["inputSchema"]}} for t in tools]
+    r = httpx.post(f"{base.rstrip('/')}/chat/completions",
+                   headers={"Authorization": f"Bearer {key}"},
+                   json={"model": _openai_model(), "temperature": 0, "tools": fns,
+                         "messages": [
+                             {"role": "system", "content": _system()},
+                             {"role": "user",
+                              "content": _user_turn(said, speaker, context or {})}]},
+                   timeout=_timeout())
+    r.raise_for_status()
+    calls = r.json()["choices"][0]["message"].get("tool_calls") or []
+    return [{"name": c["function"]["name"],
+             "arguments": json.loads(c["function"].get("arguments") or "{}")}
+            for c in calls]
+
+
+def bedrock_request(body: dict, now=None):
+    """(url, headers, raw body) for a Bedrock Converse call. A Bedrock API key
+    goes as a bearer token; otherwise the request is SigV4 signed by hand, as
+    Polly's is, so the simulator needs no AWS SDK."""
+    from urllib.parse import quote
+    region = os.getenv("AWS_REGION", "us-east-1")
+    model = os.environ["HEARTH_BEDROCK_MODEL"]
+    host = f"bedrock-runtime.{region}.amazonaws.com"
+    path = f"/model/{quote(model, safe='')}/converse"
+    base = os.getenv("HEARTH_BEDROCK_ENDPOINT") or f"https://{host}"
+    raw = json.dumps(body)
+    token = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+    if token:
+        return (base.rstrip("/") + path,
+                {"content-type": "application/json", "authorization": f"Bearer {token}"},
+                raw)
+    # SigV4 for every service but S3 encodes each path segment twice: the
+    # ':' in a model id is %3A on the wire and %253A in the canonical request.
+    headers = _sigv4("POST", host, quote(path, safe="/"), raw, "bedrock", region, now)
+    return base.rstrip("/") + path, headers, raw
+
+
+def plan_bedrock(said, speaker, tools, context=None):
+    """Plan with a model on Amazon Bedrock through the Converse API, with
+    Hearth's own tools/list as its tool config."""
+    import httpx
+    choice = os.getenv("HEARTH_SIM_LLM_TOOL_CHOICE", "any")
+    body = {
+        "system": [{"text": _system()}],
+        "messages": [{"role": "user", "content": [
+            {"text": _user_turn(said, speaker, context or {})}]}],
+        "toolConfig": {
+            "tools": [{"toolSpec": {"name": t["name"], "description": t["description"],
+                                    "inputSchema": {"json": t["inputSchema"]}}}
+                      for t in tools],
+            "toolChoice": {"any": {}} if choice == "any" else {"auto": {}}},
+        "inferenceConfig": {"temperature": 0, "maxTokens": 600},
+    }
+    url, headers, raw = bedrock_request(body)
+    r = httpx.post(url, headers=headers, content=raw, timeout=_timeout())
+    r.raise_for_status()
+    content = r.json()["output"]["message"].get("content") or []
+    return [{"name": c["toolUse"]["name"], "arguments": c["toolUse"].get("input") or {}}
+            for c in content if "toolUse" in c]
+
+
+PLANNERS = {"bedrock": plan_bedrock, "openai": plan_openai}
+LAST = {"provider": None, "error": None}
+
+
+def plan_model(said, speaker, tools, context=None):
+    """Plan with the configured model(s). Returns None when none is configured
+    or every one fails, and the caller falls back to the offline rules."""
+    known = {t["name"] for t in tools}
+    LAST.update(provider=None, error=None)
+    for p in providers():
+        try:
+            out = [c for c in PLANNERS[p](said, speaker, tools, context)
+                   if c["name"] in known]
+        except Exception as e:          # a provider down is a fallback, not a crash
+            LAST["error"] = f"{p}: {type(e).__name__}"
+            continue
+        if out:
+            LAST["provider"] = p
+            return out
+    return None
 
 
 def configured() -> bool:
-    return bool((os.getenv("HEARTH_SIM_LLM_BASE_URL") or os.getenv("HEARTH_LLM_BASE_URL"))
-                and (os.getenv("HEARTH_SIM_LLM_API_KEY") or os.getenv("HEARTH_LLM_API_KEY")))
+    return bool(providers())
+
+
+def planner_label() -> str:
+    """What the page's header says before anyone has spoken."""
+    ps = providers()
+    return (model_label(ps[0]) + " + skill:hearth-care") if ps else "offline rules"
 
 
 def warm_up(tools) -> bool:
@@ -262,31 +385,39 @@ def warm_up(tools) -> bool:
             os.environ["HEARTH_SIM_LLM_TIMEOUT"] = timeout
 
 
+DOSE_TOOLS = ("give_dose", "check_dose")
+
+
 def plan(said, speaker, tools, context=None) -> dict:
+    """Utterance to tool calls: a model when one is configured, the offline
+    rules when not. Two things never depend on the model's reading, and the
+    label says when either stepped in:
+
+      - a question never records a dose (a give_dose on a question becomes
+        check_dose);
+      - a dose being taken always reaches give_dose (a 3B model once sent
+        "time for my warfarin" to `remember`, and the refusal never ran).
+    """
     ctx = context or {}
     rules = plan_rules(said, speaker, ctx)
     if rules and "host" in rules[0]:
-        return {"planner": "rules", "calls": rules}       # the host's own step
-    if rules and rules[0].get("name") == "give_dose":
-        # Somebody is about to take a medicine. That is the one call that must
-        # never depend on a model's reading: a 3B model on CPU sent "Alexa,
-        # time for my warfarin" to `remember`, and the refusal never ran
-        # (docs/LOCAL_PLANNER.md). The rules route it; the model plans the rest.
-        return {"planner": "rules (dose guard)", "calls": rules}
+        return {"planner": "host: checkout", "calls": rules}  # Alexa+'s own step
     calls = plan_model(said, speaker, tools, ctx)
-    if calls:
-        model = (os.getenv("HEARTH_SIM_LLM_MODEL") or os.getenv("HEARTH_LLM_MODEL")
-                 or "model")
-        label = f"model:{model} + skill:hearth-care"
-        if is_question(said) and any(c["name"] == "give_dose" for c in calls):
-            # A question never records a dose, whatever the model read.
-            calls = [({"name": "check_dose", "arguments": {
-                          "medication": c["arguments"].get("medication", "it"),
-                          "asked_by": speaker}}
-                      if c["name"] == "give_dose" else c) for c in calls]
-            label += " · dose guard"
-        return {"planner": label, "calls": calls}
-    return {"planner": "rules", "calls": rules}
+    if not calls:
+        return {"planner": "offline rules", "calls": rules}
+    label = model_label(LAST["provider"] or "openai") + " + skill:hearth-care"
+    guarded = False
+    if is_question(said) and any(c["name"] == "give_dose" for c in calls):
+        calls = [({"name": "check_dose", "arguments": {
+                      "medication": c["arguments"].get("medication", "it"),
+                      "asked_by": speaker}}
+                  if c["name"] == "give_dose" else c) for c in calls]
+        guarded = True
+    if (rules[0].get("name") == "give_dose"
+            and not any(c["name"] in DOSE_TOOLS for c in calls)):
+        calls = [rules[0]] + [c for c in calls if c["name"] != "remember"]
+        guarded = True
+    return {"planner": label + (" · dose guard" if guarded else ""), "calls": calls}
 
 
 # --- voice ------------------------------------------------------------------
@@ -319,6 +450,12 @@ def polly_request(text, voice, now=None, region=None):
     host = f"polly.{region}.amazonaws.com"
     body = json.dumps({"Text": text, "OutputFormat": "mp3", "VoiceId": voice,
                        "Engine": "neural"})
+    return (f"https://{host}/v1/speech",
+            _sigv4("POST", host, "/v1/speech", body, "polly", region, now), body)
+
+
+def _sigv4(method, host, canonical_path, body, service, region, now=None) -> dict:
+    """AWS Signature Version 4 headers for a JSON POST."""
     now = now or dt.datetime.now(dt.timezone.utc)
     amz_date, day = now.strftime("%Y%m%dT%H%M%SZ"), now.strftime("%Y%m%d")
     payload_hash = hashlib.sha256(body.encode()).hexdigest()
@@ -328,20 +465,20 @@ def polly_request(text, voice, now=None, region=None):
     if token:
         headers["x-amz-security-token"] = token
     signed = ";".join(sorted(headers))
-    canonical = "\n".join(["POST", "/v1/speech", "",
+    canonical = "\n".join([method, canonical_path, "",
                            "".join(f"{k}:{headers[k]}\n" for k in sorted(headers)),
                            signed, payload_hash])
-    scope = f"{day}/{region}/polly/aws4_request"
+    scope = f"{day}/{region}/{service}/aws4_request"
     to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope,
                          hashlib.sha256(canonical.encode()).hexdigest()])
     k = _sign(("AWS4" + os.environ["AWS_SECRET_ACCESS_KEY"]).encode(), day)
-    for part in (region, "polly", "aws4_request"):
+    for part in (region, service, "aws4_request"):
         k = _sign(k, part)
     sig = hmac.new(k, to_sign.encode(), hashlib.sha256).hexdigest()
     headers["authorization"] = (
         f"AWS4-HMAC-SHA256 Credential={os.environ['AWS_ACCESS_KEY_ID']}/{scope}, "
         f"SignedHeaders={signed}, Signature={sig}")
-    return f"https://{host}/v1/speech", headers, body
+    return headers
 
 
 _PIPER = {}

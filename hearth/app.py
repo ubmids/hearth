@@ -862,7 +862,7 @@ not use it for anything other than running the service for you.</p>
         if auth.verify(request.headers.get("authorization")) is None:
             return _unauthorized()
         return {"tts": sim.tts_provider(),
-                "planner": "model + skill:hearth-care" if sim.configured() else "rules",
+                "planner": sim.planner_label(), "model": sim.configured(),
                 "simulated": True}
 
     @app.post("/sim/plan")
