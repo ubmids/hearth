@@ -25,6 +25,7 @@ from urllib.parse import urlencode
 
 AUTH_CODE_TTL = 60            # seconds; codes are single-use and short-lived
 TOKEN_TTL = 3600
+SKILL_SUBJECT = "alexa-skill"       # the household the classic skill speaks to
 
 
 def s256(verifier: str) -> str:
@@ -72,6 +73,15 @@ class AuthServer:
         self.scopes = scopes or ["household.read", "household.write"]
         self._pending: dict[str, PendingAuth] = {}
         self._tokens: dict[str, Token] = {}
+        # One long-lived credential for the classic Alexa skill bridge
+        # (skill/), set by HEARTH_SKILL_TOKEN. The demo authorization server
+        # issues one-hour tokens with no refresh, which suits a browser session
+        # and not a skill on an Echo that has to keep working through weeks of
+        # judging. It maps to one fixed household, "alexa-skill", is compared
+        # in constant time, and is ignored unless it is at least 32 characters.
+        # Unset, nothing changes.
+        skill = os.getenv("HEARTH_SKILL_TOKEN", "")
+        self._skill_token = skill if len(skill) >= 32 else ""
 
     # --- metadata documents ------------------------------------------------
     def protected_resource_metadata(self) -> dict:
@@ -190,7 +200,12 @@ class AuthServer:
         parts = authorization_header.split(" ", 1)
         if len(parts) != 2 or parts[0].lower() != "bearer":
             return None
-        tok = self._tokens.get(parts[1].strip())
+        presented = parts[1].strip()
+        if self._skill_token and secrets.compare_digest(
+                presented.encode(), self._skill_token.encode()):
+            return Token(value=presented, subject=SKILL_SUBJECT,
+                         resource=self.resource, scope=" ".join(self.scopes))
+        tok = self._tokens.get(presented)
         if tok is None or tok.expired():
             return None
         return tok

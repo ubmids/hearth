@@ -1,0 +1,529 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "hearth care",
+      "intents": [
+        {
+          "name": "GiveDoseIntent",
+          "slots": [
+            {
+              "name": "medication",
+              "type": "MEDICATION"
+            }
+          ],
+          "samples": [
+            "i'm just going to take my {medication}",
+            "i'm going to take my {medication}",
+            "i'm taking my {medication}",
+            "i'm taking my {medication} now",
+            "time for my {medication}",
+            "i'll have my {medication} now",
+            "i'll have my {medication}",
+            "i'm having my {medication}",
+            "i'm giving her her {medication}",
+            "i'm giving mom her {medication}",
+            "i just gave her her {medication}",
+            "i just gave mom her {medication}",
+            "i took my {medication}",
+            "i've taken my {medication}",
+            "can i take my {medication}",
+            "let me take my {medication}"
+          ]
+        },
+        {
+          "name": "CheckDoseIntent",
+          "slots": [
+            {
+              "name": "medication",
+              "type": "MEDICATION"
+            }
+          ],
+          "samples": [
+            "has mom had her {medication} today",
+            "has mom had her {medication}",
+            "did mom take her {medication}",
+            "did mom take her {medication} today",
+            "has she had her {medication}",
+            "did i take my {medication}",
+            "did i already take my {medication} today",
+            "did she take her {medication}"
+          ]
+        },
+        {
+          "name": "CatchUpIntent",
+          "slots": [],
+          "samples": [
+            "what did i miss",
+            "what did i miss with mom",
+            "what did i miss with mom today",
+            "catch me up",
+            "what's new with mom",
+            "how is mom doing",
+            "how's mom been",
+            "anything new",
+            "what happened today"
+          ]
+        },
+        {
+          "name": "WhyIntent",
+          "slots": [],
+          "samples": [
+            "why did you stop her",
+            "why did you do that",
+            "why did you stop mom",
+            "why did you say no",
+            "why"
+          ]
+        },
+        {
+          "name": "ArrangeIntent",
+          "slots": [
+            {
+              "name": "appointment",
+              "type": "APPOINTMENT"
+            },
+            {
+              "name": "day",
+              "type": "AMAZON.DATE"
+            },
+            {
+              "name": "time",
+              "type": "AMAZON.TIME"
+            }
+          ],
+          "samples": [
+            "mom's {appointment} moved to {day} at {time} sort it out",
+            "mom's {appointment} moved to {day} at {time}",
+            "mom's {appointment} has moved to {day} at {time}",
+            "her {appointment} moved to {day} at {time} sort it out",
+            "move mom's {appointment} to {day} at {time}",
+            "book mom's {appointment} for {day} at {time}",
+            "mom's {appointment} is now {day} at {time}",
+            "mom's {appointment} moved to {day} sort it out"
+          ]
+        },
+        {
+          "name": "ReorderIntent",
+          "slots": [
+            {
+              "name": "item",
+              "type": "ITEM"
+            }
+          ],
+          "samples": [
+            "we're nearly out of her {item} reorder it",
+            "we're nearly out of her {item}",
+            "we're running low on {item}",
+            "reorder her {item}",
+            "reorder {item}",
+            "order more {item}",
+            "we need more {item}",
+            "we're almost out of {item}"
+          ]
+        },
+        {
+          "name": "CanHaveIntent",
+          "slots": [
+            {
+              "name": "thing",
+              "type": "TREAT"
+            }
+          ],
+          "samples": [
+            "can mom have a {thing}",
+            "can mom have {thing}",
+            "can she have a {thing}",
+            "is mom allowed a {thing}",
+            "is mom allowed {thing}",
+            "can mom get a {thing}"
+          ]
+        },
+        {
+          "name": "RecordIntent",
+          "slots": [],
+          "samples": [
+            "show me the record",
+            "show the record",
+            "what have you done",
+            "what's on the record",
+            "read me the record"
+          ]
+        },
+        {
+          "name": "IAmIntent",
+          "slots": [
+            {
+              "name": "name",
+              "type": "AMAZON.FirstName"
+            }
+          ],
+          "samples": [
+            "this is {name}",
+            "it's {name} here",
+            "{name} here"
+          ]
+        },
+        {
+          "name": "RememberIntent",
+          "slots": [
+            {
+              "name": "statement",
+              "type": "CATCH_ALL"
+            }
+          ],
+          "samples": [
+            "{statement}",
+            "remember {statement}",
+            "remember that {statement}",
+            "note that {statement}",
+            "tell hearth {statement}"
+          ]
+        },
+        {
+          "name": "AMAZON.YesIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "MEDICATION",
+          "values": [
+            {
+              "name": {
+                "value": "warfarin",
+                "synonyms": [
+                  "blood thinner",
+                  "blood thinners",
+                  "coumadin",
+                  "jantoven",
+                  "warfarin sodium"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "furosemide",
+                "synonyms": [
+                  "lasix",
+                  "water pill",
+                  "water pills"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "metoprolol",
+                "synonyms": [
+                  "heart pill",
+                  "heart pills"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "vitamin d"
+              }
+            },
+            {
+              "name": {
+                "value": "paracetamol",
+                "synonyms": [
+                  "tylenol"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "aspirin"
+              }
+            },
+            {
+              "name": {
+                "value": "metformin"
+              }
+            },
+            {
+              "name": {
+                "value": "medicine",
+                "synonyms": [
+                  "medication",
+                  "pills",
+                  "tablets"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "APPOINTMENT",
+          "values": [
+            {
+              "name": {
+                "value": "cardiology",
+                "synonyms": [
+                  "cardiologist",
+                  "heart doctor",
+                  "cardiology appointment"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "dentist",
+                "synonyms": [
+                  "dental appointment"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "doctor",
+                "synonyms": [
+                  "gp",
+                  "doctor's appointment"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "podiatrist"
+              }
+            },
+            {
+              "name": {
+                "value": "eye clinic",
+                "synonyms": [
+                  "eye doctor",
+                  "optician"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "physio",
+                "synonyms": [
+                  "physiotherapy"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "check up",
+                "synonyms": [
+                  "checkup"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ITEM",
+          "values": [
+            {
+              "name": {
+                "value": "warfarin",
+                "synonyms": [
+                  "blood thinner",
+                  "blood thinners",
+                  "coumadin",
+                  "warfarin tablets"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "ensure",
+                "synonyms": [
+                  "ensure drinks",
+                  "ensure shakes"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "pill organiser",
+                "synonyms": [
+                  "pill organizer",
+                  "pill box"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "furosemide",
+                "synonyms": [
+                  "lasix",
+                  "water pills"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "metoprolol",
+                "synonyms": [
+                  "heart pills"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TREAT",
+          "values": [
+            {
+              "name": {
+                "value": "coffee",
+                "synonyms": [
+                  "a coffee",
+                  "cup of coffee",
+                  "coffee now"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "wine",
+                "synonyms": [
+                  "a glass of wine",
+                  "a drink",
+                  "beer",
+                  "alcohol",
+                  "a beer"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CATCH_ALL",
+          "values": [
+            {
+              "name": {
+                "value": "mom finished the antibiotics"
+              }
+            },
+            {
+              "name": {
+                "value": "mom's warfarin is twice a day"
+              }
+            },
+            {
+              "name": {
+                "value": "no coffee for mom after three"
+              }
+            },
+            {
+              "name": {
+                "value": "keep it at nineteen in here"
+              }
+            },
+            {
+              "name": {
+                "value": "gran's gone home"
+              }
+            },
+            {
+              "name": {
+                "value": "mom can have coffee till six"
+              }
+            },
+            {
+              "name": {
+                "value": "no wine for mom while she's on the antibiotics"
+              }
+            },
+            {
+              "name": {
+                "value": "i'll take mom to anything on a thursday"
+              }
+            },
+            {
+              "name": {
+                "value": "i can do tuesdays"
+              }
+            },
+            {
+              "name": {
+                "value": "up to fifty dollars without asking me"
+              }
+            },
+            {
+              "name": {
+                "value": "mom slept well"
+              }
+            },
+            {
+              "name": {
+                "value": "dinner is at six tonight"
+              }
+            },
+            {
+              "name": {
+                "value": "the physio is on mondays now"
+              }
+            },
+            {
+              "name": {
+                "value": "she doesn't like the blue cup"
+              }
+            },
+            {
+              "name": {
+                "value": "mom is allergic to penicillin"
+              }
+            },
+            {
+              "name": {
+                "value": "the antibiotics are done"
+              }
+            },
+            {
+              "name": {
+                "value": "turn the heating down"
+              }
+            },
+            {
+              "name": {
+                "value": "we are out of milk"
+              }
+            },
+            {
+              "name": {
+                "value": "grace is off next week"
+              }
+            },
+            {
+              "name": {
+                "value": "tom is visiting on sunday"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

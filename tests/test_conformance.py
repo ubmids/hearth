@@ -1709,6 +1709,30 @@ def test_bad_arguments_are_a_tool_error_that_leaks_no_python():
     print("PASS bad arguments come back as isError in plain words")
 
 
+def test_the_skill_credential_works_only_when_set_and_long_enough():
+    """HEARTH_SKILL_TOKEN: the classic Alexa skill's one long-lived bearer,
+    mapped to one household. Off unless set; a short one is ignored; it is
+    still a bearer token, so every other rule (header only, Origin) applies."""
+    secret = "s" * 40
+    c, app = client()
+    assert c.post("/mcp", json=INIT, headers=init_headers(secret)).status_code == 401
+    os.environ["HEARTH_SKILL_TOKEN"] = secret
+    try:
+        c, app = client()
+        r = c.post("/mcp", json=INIT, headers=init_headers(secret))
+        assert r.status_code == 200, r.status_code
+        assert app.state.auth.verify(f"Bearer {secret}").subject == "alexa-skill"
+        assert c.post("/mcp", json=INIT, headers=init_headers("s" * 39)).status_code == 401
+        q = c.post(f"/mcp?access_token={secret}", json=INIT, headers=init_headers(secret))
+        assert q.status_code == 400, q.status_code
+        os.environ["HEARTH_SKILL_TOKEN"] = "too-short"
+        c2, _ = client()
+        assert c2.post("/mcp", json=INIT, headers=init_headers("too-short")).status_code == 401
+    finally:
+        del os.environ["HEARTH_SKILL_TOKEN"]
+    print("PASS the skill credential is opt-in, long, and one household")
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

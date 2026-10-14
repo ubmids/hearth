@@ -28,6 +28,10 @@ jobs:
             python3 "$t"
             echo "::endgroup::"
           done
+      - name: The classic Alexa skill, against a running Hearth
+        run: |
+          pip install -q -r skill/lambda/requirements.txt
+          python3 skill/tests/test_skill.py
 
   # The official MCP conformance suite (@modelcontextprotocol/conformance),
   # spec 2025-11-25, run against a local Hearth through a loopback proxy that

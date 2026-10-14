@@ -1,0 +1,91 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "name": "Hearth Care",
+          "summary": "A family's shared memory for caring for a parent, from Hearth's MCP server.",
+          "description": "Hearth Care connects Alexa to Hearth, a self-hosted MCP server that holds a caring family's rules and record. It stops a second dose of a medicine over the family's daily limit, tells relatives what they missed, sorts out appointments, and keeps an honest record. Demo build: the pharmacy and ride services are sandboxes, and no payment is taken.",
+          "examplePhrases": [
+            "Alexa, open hearth care",
+            "Alexa, tell hearth care I'm just going to take my blood thinner",
+            "Alexa, ask hearth care what did I miss"
+          ],
+          "keywords": [
+            "care",
+            "medication",
+            "family",
+            "caregiver",
+            "MCP"
+          ],
+          "smallIconUri": "https://example.invalid/set-in-console-108.png",
+          "largeIconUri": "https://example.invalid/set-in-console-512.png"
+        }
+      },
+      "isAvailableWorldwide": false,
+      "distributionCountries": [
+        "US"
+      ],
+      "testingInstructions": "Development stage only; not for certification.",
+      "category": "HEALTH_AND_FITNESS",
+      "distributionMode": "PRIVATE"
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "arn:aws:lambda:us-east-1:ACCOUNT:function:hearth-care-skill"
+        },
+        "interfaces": [
+          {
+            "type": "ALEXA_PRESENTATION_APL",
+            "supportedViewports": [
+              {
+                "mode": "HUB",
+                "shape": "RECTANGLE",
+                "minWidth": 1024,
+                "maxWidth": 1279,
+                "minHeight": 600,
+                "maxHeight": 799
+              },
+              {
+                "mode": "HUB",
+                "shape": "RECTANGLE",
+                "minWidth": 1280,
+                "maxWidth": 1920,
+                "minHeight": 800,
+                "maxHeight": 1279
+              },
+              {
+                "mode": "HUB",
+                "shape": "ROUND",
+                "minWidth": 480,
+                "maxWidth": 480,
+                "minHeight": 480,
+                "maxHeight": 480
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": false,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false,
+      "locales": {
+        "en-US": {
+          "privacyPolicyUrl": "https://example.invalid/privacy",
+          "termsOfUseUrl": "https://example.invalid/terms"
+        }
+      }
+    },
+    "permissions": [
+      {
+        "name": "alexa::person_id:read"
+      }
+    ]
+  },
+  "manifestVersion": "1.0"
+}

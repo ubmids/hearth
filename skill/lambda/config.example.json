@@ -1,0 +1,8 @@
+{
+  "HEARTH_URL": "https://your-hearth.example",
+  "HEARTH_TOKEN": "same value as HEARTH_SKILL_TOKEN on the server (32+ chars)",
+  "HEARTH_DEFAULT_SPEAKER": "Rose",
+  "HEARTH_CARED_FOR": "Mom",
+  "HEARTH_DEVICES": {"amzn1.ask.device.TOMS-ECHO-DOT": "Tom"},
+  "HEARTH_PEOPLE": {}
+}
