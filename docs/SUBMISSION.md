@@ -163,7 +163,8 @@ Show would, calls tools over Streamable HTTP, and plays the host's part in
 checkout. The MCP traffic is shown live beside the conversation. A small
 planner stands in for Alexa's language model (a configured model, taught by
 Hearth's Agent Skill, or built-in rules; the header says which). **Every word Alexa says is the text Hearth
-returned.**
+returned**, except the order confirmation after "yes", which is the host's own
+line built from the completed checkout session.
 
 Also simulated: the ride service and the pharmacy are sandbox providers. Nothing
 books a car or charges a card. Hearth is not a medical device: it enforces the
@@ -247,8 +248,11 @@ reproduction steps, severity, workaround and suggestion for each.
   Alexa+ payments pages.
 - **OAuth 2.1 with PKCE S256**, hand-rolled, plus both discovery documents.
 - **Agent Skills** (open format) for `skills/hearth-care`.
-- **Amazon Polly** neural voices for the simulated client when AWS keys are
-  set; **Piper** offline otherwise.
+- **Piper** offline neural voices for the simulated client (the demo audio).
+  An **Amazon Polly** neural path is wired for when AWS keys are set; its
+  request signing is unit-tested but it has not been run against AWS.
+- **Alexa Skills Kit** (`ask-sdk-core`, APL) for the classic skill in
+  `skill/`, tested locally against Hearth; not yet deployed.
 - We could **not** use the `alexa-ai` CLI, the MCP Toolkit, the local inspector
   or the Web Simulator: all four are partner-only (friction log entry 5).
 

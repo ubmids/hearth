@@ -11,7 +11,9 @@ An Alexa+ add-on, built as a self-hosted MCP server.**
 ![The simulated Alexa+ kitchen Echo Show stopping a second warfarin, with the live MCP traffic beside it](docs/img/hold-on-rose.jpg)
 
 [Listen to the whole household (2 min)](demo/hold-on-rose.m4a) ·
-[transcript](demo/transcript.md). Every Alexa line is Hearth's real answer.
+[transcript](demo/transcript.md). Every Alexa line is Hearth's real answer,
+except the order confirmation after "Yes, go ahead", which is the host's (the
+part Alexa+ plays in checkout), built from the completed checkout session.
 
 Nobody told Alexa that in the moment. Grace, the home aide, logged the morning
 dose four hours earlier. Ada, Rose's daughter, set the rule twelve days ago from
@@ -108,10 +110,11 @@ PKCE, opens an MCP session per device, lists tools, reads Hearth's MCP App and
 hosts it the way an Echo Show would, and calls tools over Streamable HTTP. What
 it cannot be is Alexa's language model: a small planner chooses which tool to
 call (a configured model taught by Hearth's Agent Skill, or built-in rules;
-the header says which), and every word
-the assistant says is the text Hearth returned.
+the header says which), and every word the assistant says is the text
+Hearth returned, apart from the host's own checkout confirmation.
 
-Voice: Amazon Polly neural if AWS keys are set, otherwise
+Voice: Amazon Polly neural if AWS keys are set (the request signing is
+unit-tested, but this path has not yet been run against AWS), otherwise
 [Piper](https://github.com/rhasspy/piper) offline (`pip install -r requirements-sim.txt`,
 then set `HEARTH_PIPER_VOICE` to a voice model), otherwise the browser's voice.
 See `.env.example`.
@@ -176,8 +179,10 @@ mutation-score report.
   every time, 3–9 s a line: not fast enough for camera).
 - Not a medical device. Hearth enforces the rules the family gives it; it does
   not know pharmacology. The rule extractor without a model key is a small,
-  deterministic set of patterns; `HEARTH_LLM_*` plugs in any OpenAI-compatible
-  model for the write path.
+  deterministic set of patterns; `HEARTH_LLM_*` is wired for any
+  OpenAI-compatible model on the write path, but has only been run against a
+  test stub, so in every configuration that has actually run, writes go
+  through the patterns.
 
 ## More
 

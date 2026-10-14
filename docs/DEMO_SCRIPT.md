@@ -16,8 +16,9 @@ labels itself SIMULATED ALEXA+ in the header and on every device frame, which
 the rules require. Left half: the device (Kitchen Echo Show, Tom's Echo Dot,
 Ada's Alexa app) with Hearth's MCP App card. Right half: the live MCP traffic.
 
-The Alexa lines are Hearth's real answers: if the server changed, the video
-would say something different. What is not Alexa is the planner that picks
+The Alexa lines are Hearth's real answers (except the order confirmation at
+1:24, which is the host's line, built from the completed checkout): if the
+server changed, the video would say something different. What is not Alexa is the planner that picks
 the tool. Without a model configured it is the built-in rules, and the header
 says `planner: rules`; with one it says `model:… + skill:hearth-care`. Film
 with whichever is true and do not hide the header.
@@ -64,6 +65,8 @@ antibiotics. Never cut 0:00–0:20, the purchase, or the record.
    Voices are from huggingface.co/rhasspy/piper-voices. With AWS keys set
    (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`), Amazon Polly neural voices
    are used instead, which suits an Amazon video better: `HEARTH_TTS=polly`.
+   That path has not been run against AWS yet; render one line and listen
+   before filming with it.
 
 2. **Open** `http://localhost:8000/alexa` in Chrome, full screen (F11). It
    authorises and opens its MCP sessions on load; the traffic panel fills.
