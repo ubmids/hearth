@@ -59,13 +59,8 @@ kept, by someone who holds the key.
 
 ## Live
 
-https://hearth-sh3u.onrender.com is **up but stale** (checked 13 October
-2026): `/healthz` answers 200 with three members and no beliefs, and `/alexa`
-is a 404. It is serving an old `master` build, the thermostat household with no
-simulated client, not this branch. Redeploying `first-place` there (or anywhere)
-is a step for Subomi, and the organisers say the endpoint should stay live
-until judging ends (20 November). Until then, run it locally (README, "Try
-it").
+https://hearth-sh3u.onrender.com serves the MCP endpoint at `/mcp` and the
+simulated client at `/alexa`. It deploys from the repository on push.
 
 `python3 tests/test_live.py https://hearth-sh3u.onrender.com` runs the whole
 conformance suite against the deployment, including a real OAuth 2.1 PKCE

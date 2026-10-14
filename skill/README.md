@@ -68,7 +68,7 @@ deployed to Lambda, built in the developer console, run in the console's test
 simulator, or spoken to on an Echo. The APL document has not been opened in
 the APL authoring tool. Those are the steps below.
 
-## Deploy it (Subomi)
+## Deploy it
 
 You need: a free Amazon developer account (the same Amazon account as the Echo
 you will film), and Hearth deployed somewhere public over HTTPS.

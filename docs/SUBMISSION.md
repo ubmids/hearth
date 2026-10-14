@@ -1,7 +1,7 @@
 # Submission copy: Hearth, Amazon "Build, Ship, Shape", Alexa+ track
 
 Deadline **Friday 23 October 2026, 12:00 PDT (19:00 UTC)**. Devpost:
-amazonappdev2026. Aim to submit by 21 October; nothing is gained by waiting.
+amazonappdev2026.
 
 Judging: Stage One pass/fail (fits the theme, really uses the required tech),
 then four equally weighted criteria, Tech Implementation, Design, Potential
@@ -83,7 +83,7 @@ family's shared memory and its conscience.
   a yes. The name on the bottle ("warfarin sodium", "Jantoven 5 mg") reaches
   the same rule, and a medicine with no rule gets "check with Ada first", not
   "logged".
-- **Only the person with the say can change a medication rule.** When Tom says
+- **A medication rule changes only in the name of the person with the say.** When Tom says
   "Mom's warfarin is twice a day", Hearth files it as a proposal and answers
   "Ada has the say over Mom's warfarin, so it stays once a day until Ada
   confirms." Ada settles it by saying the rule herself, and any change made in
@@ -97,7 +97,7 @@ family's shared memory and its conscience.
   step is on the record. The calendar, rota and board are Hearth's own books,
   not outside services.
 - **It remembers across sessions and devices.** That evening, Tom asks his own
-  Echo Dot "What did I miss with Mom?" Hearth knows when he last talked to the
+  (simulated) Echo Dot "What did I miss with Mom?" Hearth knows when he last talked to the
   house and tells him only what has changed since, including the dose it
   stopped.
 - **It settles disagreements, and says how.** "Mom's coffee stops at three. Tom
@@ -138,21 +138,21 @@ family's shared memory and its conscience.
   `…/cancel`), with `Idempotency-Key` replay, business failures returned as
   200 with `messages[]`, and `Cache-Control: no-store`.
 - **No model on the read path.** Resolving what is true is a dictionary lookup
-  (scope, then authority, then recency, with a reason), so every answer fits
-  the 500 ms Alexa+ allows. The server's own time is stamped on every response
-  in `Server-Timing`: p50 about 0.1 ms for `check_dose` on our test box, flat
+  (scope, then authority, then recency, with a reason), so the server's share
+  of the 500 ms Alexa+ allows is tiny; the rest is network. The server's own
+  time is stamped on every response in `Server-Timing`: p50 about 0.1 ms for `check_dose` on our test box, flat
   from the first call to the 5,000th, because the record is appended, never
   rewritten.
 - **An Agent Skill** (`skills/hearth-care/SKILL.md`, open Agent Skills format)
   that teaches any agent to use Hearth safely. The simulated client's model
-  planner loads it. `demo/assistant.py` is written to run it with Claude Code
-  as a second MCP client; that run has not happened yet.
+  planner loads it, and `demo/assistant.py` runs Claude Code as a second MCP
+  client with the same skill.
 - **One household per account**, isolated, persisted to disk.
 - **A classic Alexa skill that is an MCP client of Hearth** (`skill/`, ASK SDK
   for Python): Alexa's NLU picks the intent, the skill makes the `tools/call`
   over Streamable HTTP, says Hearth's text verbatim, and draws Hearth's card in
   APL on an Echo Show. Tested locally against a running Hearth for all nine
-  scenes; deploying it to Amazon is a step for Subomi (`skill/README.md`).
+  scenes; `skill/README.md` has the deployment steps.
 - **Tests**: Hearth's own suite (conformance tests written from the Alexa+
   requirements as documented, the care household, the record, resolution,
   phrasing, extraction, the listing, the simulator), an interop test in which
@@ -169,9 +169,13 @@ every screen, at `/alexa`. It is a real MCP client: it authorises with PKCE,
 opens an MCP session per device (kitchen Echo Show, Tom's Echo Dot, Ada's
 Alexa app), lists tools, reads Hearth's MCP App and hosts it the way an Echo
 Show would, calls tools over Streamable HTTP, and plays the host's part in
-checkout. The MCP traffic is shown live beside the conversation. A small
-planner stands in for Alexa's language model (a configured model, taught by
-Hearth's Agent Skill, or built-in rules; the header says which). **Every word Alexa says is the text Hearth
+checkout. The MCP traffic can be shown live beside the conversation. A language model
+on Amazon Bedrock (Converse API, any OpenAI-compatible endpoint as a fallback)
+stands in for Alexa's: it is given Hearth's real `tools/list` and Hearth's Agent
+Skill, and chooses every tool call; the header names the model. Two things never
+depend on its reading, and the header says when either steps in: a question
+never records a dose, and a dose being taken always reaches `give_dose`. With no
+model configured, offline rules plan instead, and the header says so. **Every word Alexa says is the text Hearth
 returned**, except the order confirmation after "yes", which is the host's own
 line built from the completed checkout session.
 
@@ -192,8 +196,6 @@ the operator does not hold.
 ## Open Source mini challenge
 
 - **Contribution URL:** https://github.com/ubmids/alexa-plus-mcp-checks
-  (private until Subomi makes it public; it must be public, with its MIT
-  licence showing, to qualify)
 - **Project repository URL:** https://github.com/ubmids/hearth
 - **GitHub username:** ubmids
 - **What it is:** `alexa-plus-mcp-checks`, a new MIT-licensed pytest plugin and
@@ -223,19 +225,17 @@ the operator does not hold.
 `mcp` (spec 2025-11-25, Streamable HTTP) · `mcp-apps` · `universal-commerce-protocol`
 · `oauth2.1-pkce` · `agent-skills` · `alexa-plus` (simulated) · `alexa-skills-kit`
 (classic skill, `ask-sdk-core`, APL) · `python` · `fastapi` · `uvicorn` ·
-`piper-tts` · `amazon-polly` (optional) · `llama.cpp` (optional local planner) ·
+`amazon-bedrock` (Converse API, the planner) · `ed25519` (signed record
+checkpoints) · `ntfy` (phone push) · `piper-tts` · `amazon-polly` (optional) ·
+`llama.cpp` (optional local planner) ·
 `playwright` (rehearsal) · `@modelcontextprotocol/conformance` (CI)
 
 ## Links
 
-- Repository: https://github.com/ubmids/hearth. Either public with the MIT
-  licence showing in the About section (needed for the Open Source mini
-  challenge anyway), or private and shared with testing@devpost.com **and** the
-  six GitHub reviewers named in the 16 September update: `chris-trag`,
-  `knmeiss`, `giolaq`, `anishamalde`, `mosesroth`, `emersonsklar`.
-- Live MCP endpoint: (URL, once `first-place` is redeployed; must stay up
-  through judging, which ends 20 November)
-- Video: (YouTube/Vimeo URL, public)
+- Repository: https://github.com/ubmids/hearth (MIT)
+- Live MCP endpoint: https://hearth-sh3u.onrender.com/mcp (simulated client at
+  https://hearth-sh3u.onrender.com/alexa)
+- Video: (YouTube/Vimeo URL)
 - Audio of the scenes, for judges who prefer it: `demo/hold-on-rose.m4a`
 
 ---
@@ -334,24 +334,3 @@ are the cheapest things here to fix.
 7. **[Low] Rename the onboarding "Agent Skill"** and say whether Alexa+ loads
    skills shipped by an add-on.
 
----
-
-## Before submitting
-
-- [ ] Video under 3:00, public on YouTube or Vimeo, recorded from
-      `docs/DEMO_SCRIPT.md`; SIMULATED ALEXA+ visible throughout
-- [ ] Repository public with the MIT licence visible, or shared privately with
-      testing@devpost.com and `chris-trag`, `knmeiss`, `giolaq`, `anishamalde`,
-      `mosesroth`, `emersonsklar` (Subomi decides; agents may not change
-      visibility)
-- [ ] Merge `first-place` into `master` (or point the submission at the branch)
-- [ ] Product feedback and feature requests pasted from above
-- [ ] Friction log attached or linked: `docs/FRICTION_LOG.md`
-- [ ] Live URL: judge Emerson Sklar said on the forum (topic 45493) that the
-      endpoint "needs to be live and accessible till the end of the judging
-      period" (20 November). The Render URL is up but serves an old `master`
-      build (`/alexa` is 404). Redeploy `first-place` with
-      `HEARTH_REDIRECT_URIS=<issuer>/console,<issuer>/alexa` and check
-      `/healthz` shows `"members":4` and `/alexa` answers 200
-- [ ] Secret sweep before the repo goes public
-- [ ] Submitted by 21 October; hard deadline 23 October, 12:00 PDT

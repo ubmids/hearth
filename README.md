@@ -45,7 +45,7 @@ why.
 |---|---|
 | **Stops the second dose** | `give_dose` checks the family's rule (once a day, set by Ada, who holds the health care proxy) against today's record (given 9:10, by Grace) and refuses. In code, on the server: once the assistant reports the dose, nothing the model says can turn the refusal into a yes. "Warfarin sodium", "Jantoven 5 mg" and "her Coumadin" all reach the same rule, and a medicine with no rule gets "check with Ada", never "logged". |
 | **Sorts it out in one request** | "Mom's cardiology moved to Thursday at ten, sort it out." Calendar moved, Tom assigned because the family rota says he does Thursdays, Tuesday's ride cancelled, a new ride booked for 9:15, a note left for Tom and Grace on the family board and pushed to Tom's phone, and a dose that falls during the trip called out. Five steps in one tool call, every step on the record. Calendar, rota and board are Hearth's own books; the ride provider is a sandbox; the phone push is real (ntfy or any webhook, `HEARTH_NOTIFY_<NAME>`). |
-| **Remembers across sessions and devices** | Tom, on his own Echo Dot that evening: "What did I miss with Mom?" Hearth knows when he last talked to the house and tells him only what changed since, including the dose it stopped. |
+| **Remembers across sessions and devices** | Tom, on his own (simulated) Echo Dot that evening: "What did I miss with Mom?" Hearth knows when he last talked to the house and tells him only what changed since, including the dose it stopped. |
 | **Settles disagreements, and says how** | Tom says Mom can have coffee till six; Ada said three because it keeps her up. "Mom's coffee stops at three. Tom said six, but Ada has the say over what she eats and drinks." A medication rule from someone without the say is only a proposal: "Ada has the say over Mom's warfarin, so it stays once a day until Ada confirms." |
 | **Lets situations end** | "No wine while she's on the antibiotics" holds until "Mom finished the antibiotics", then stops applying by itself. |
 | **Buys, the Alexa+ way** | "We're nearly out of her warfarin, reorder it" prices the refill against the family's spending limit and last week's orders, and offers Pay. Per the Alexa+ payments docs, Alexa+ then opens the checkout session on Hearth's Universal Commerce Protocol endpoints, takes the PIN and the card, and completes it; in this build the simulated client plays that part against a sandbox merchant. Hearth never charges anything itself. |
@@ -87,8 +87,8 @@ why.
   reference server's fixture tools or capabilities Hearth does not declare
   (`--all` runs them anyway). CI runs it as its own job.
 - **No model on the read path.** Resolving what is true is a dictionary lookup,
-  so every answer fits inside the 500 ms Alexa+ allows. The server's own share
-  is stamped on each response in `Server-Timing`: p50 about 0.1 ms for
+  so the server's share of the 500 ms Alexa+ allows is tiny; the rest is
+  network. The server's own share is stamped on each response in `Server-Timing`: p50 about 0.1 ms for
   `check_dose` on our test box, flat from the first call to the 5,000th
   (`scripts/trace_latency.py`; the record is appended, never rewritten).
 - **One household per account**, isolated, persisted to disk.
@@ -109,10 +109,15 @@ is available to select partners only, so it is not open to hackathon
 entrants. `/alexa` is a real MCP client standing in for it: it authorises with
 PKCE, opens an MCP session per device, lists tools, reads Hearth's MCP App and
 hosts it the way an Echo Show would, and calls tools over Streamable HTTP. What
-it cannot be is Alexa's language model: a small planner chooses which tool to
-call (a configured model taught by Hearth's Agent Skill, or built-in rules;
-the header says which), and every word the assistant says is the text
-Hearth returned, apart from the host's own checkout confirmation.
+it cannot be is Alexa's language model. A language model
+on Amazon Bedrock (Converse API, any OpenAI-compatible endpoint as a fallback)
+stands in for Alexa's: it is given Hearth's real `tools/list` and Hearth's Agent
+Skill, and chooses every tool call; the header names the model. Two things never
+depend on its reading, and the header says when either steps in: a question
+never records a dose, and a dose being taken always reaches `give_dose`. With no
+model configured, offline rules plan instead, and the header says so. Every word the
+assistant says is the text Hearth returned, apart from the host's own checkout
+confirmation. `?film=1` is the full-width view used for the video.
 
 Voice: Amazon Polly neural if AWS keys are set (the request signing is
 unit-tested, but this path has not yet been run against AWS), otherwise
@@ -178,8 +183,9 @@ mutation-score report.
 - Simulated: Alexa+ itself (see above). The classic Alexa skill in `skill/`
   is real Alexa, but it is a classic custom skill, not an Alexa+ add-on, and it
   has been tested locally only so far.
-- The planner: built-in rules unless a model is configured. A dose being taken
-  is always routed by the rules, whatever a model would say.
+- The planner: a model on Bedrock (or any OpenAI-compatible endpoint) when one
+  is configured, with a guard that keeps questions from logging doses and dose
+  reports from being missed; offline rules otherwise.
   `docs/LOCAL_PLANNER.md` measures a 3B model on CPU as the planner (right tool
   every time, 3–9 s a line: not fast enough for camera).
 - Not a medical device. Hearth enforces the rules the family gives it; it does

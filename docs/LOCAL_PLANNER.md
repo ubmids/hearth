@@ -14,8 +14,8 @@ Measured 14 October 2026.
 - llama.cpp prebuilt CPU server, build b11606, run with `CUDA_VISIBLE_DEVICES=`.
 - Qwen2.5-3B-Instruct, Q4_K_M GGUF (2.0 GiB).
 - `llama-server --jinja -t 8 -c 8192`; resident memory 3.35–3.7 GB after load.
-- AMD Ryzen 9 9900X (24 threads). **The machine was busy**: two unrelated model
-  servers were using about 12 cores, load average 16–25, swap full. Decode ran
+- A 24-thread desktop CPU. **The machine was busy** with other work: load
+  average 16–25, swap full. Decode ran
   at 4–9 tokens/s. An idle machine would be faster; that was not measured.
 - Script: `scripts/local_planner.sh` downloads both and starts the server.
 
