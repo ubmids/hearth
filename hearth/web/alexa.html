@@ -189,6 +189,9 @@ const SCRIPT = [
   ["Ada", "Mom finished the antibiotics."],
   ["Ada", "Alexa, show me the record."],
 ];
+// The scenes filmed for the video (docs/DEMO_SCRIPT.md), as indices into
+// SCRIPT: the "why" and the antibiotics are cut to keep it under three minutes.
+const FILM = [0, 1, 3, 4, 5, 6, 8];
 // Page flags (?mute=1, ?voices=off, ?autoplay=1) survive the OAuth round trip,
 // which comes back to the bare path with only a code on it.
 const params = new URLSearchParams(location.search);
@@ -509,8 +512,8 @@ document.addEventListener("keydown", e => {
 // person at the keyboard would; the model planner then reads it like any
 // other line. Nothing on screen says which line comes next.
 async function typeNext() {
-  if (busy || step >= SCRIPT.length) return;
-  const [who, line] = SCRIPT[step++];
+  if (busy || step >= FILM.length) return;
+  const [who, line] = SCRIPT[FILM[step++]];
   setWho(who);
   const box = $("#said"); box.value = "";
   for (const ch of line) { box.value += ch; await new Promise(r => setTimeout(r, 22)); }

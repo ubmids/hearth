@@ -200,7 +200,7 @@ def test_the_household_on_a_real_skill_handler():
 
     # 9. The record, from the server.
     t = say("RecordIntent", device="adas-phone")
-    assert re.match(r"\d+ calls on the record, 1 refused, and it matches the server's signed checkpoint", t.speech), t.speech
+    assert re.match(r"\d+ calls on the record, 1 refused, and it matches its signed checkpoint", t.speech), t.speech
     verbatim(t, "record")
     print(f"PASS the nine scenes on a real skill handler against {url}")
 

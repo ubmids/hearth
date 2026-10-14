@@ -364,7 +364,7 @@ def test_the_record_tool_checks_the_receipt_it_is_given():
     rec = out["structuredContent"]["record"]
     assert len(rec["hash"]) == 64, rec
     reply = house.say("record", limit=3, receipt_seq=rec["seq"], receipt_hash=rec["hash"])
-    assert "receipt this device kept from call" in reply, reply
+    assert "the receipt this device kept: nothing up to call" in reply, reply
     bad = house.say("record", limit=3, receipt_seq=rec["seq"], receipt_hash="0" * 64)
     assert "does not hold up" in bad, bad
     r = house.c.get("/record/checkpoint", headers=house.headers).json()
@@ -413,7 +413,7 @@ def test_the_record_survives_a_restart_and_still_verifies():
         assert len(again.server.care.book.doses) == 1
         assert again.home[1].actions[-1].outcome == "refused"
         reply = again.say("record", limit=3)
-        assert "matches the server's signed checkpoint" in reply and "1 refused" in reply, reply
+        assert "matches its signed checkpoint" in reply and "1 refused" in reply, reply
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("PASS the record survives a restart")

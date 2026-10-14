@@ -1044,12 +1044,12 @@ class HearthMCP:
             check = (f"and it does not hold up at entry {bad}: {audit['reason']}."
                      if bad else f"and {audit['reason']}.")
         elif held:
-            check = (f"and it matches the server's signed checkpoint and the receipt "
-                     f"this device kept from call {held['seq']}, so nothing up to "
-                     f"there has been changed or removed.")
+            check = (f"and it matches its signed checkpoint and the receipt this "
+                     f"device kept: nothing up to call {held['seq']} has been "
+                     f"changed or removed.")
         else:
-            check = ("and it matches the server's signed checkpoint: nothing has "
-                     "been changed or removed without the record key.")
+            check = ("and it matches its signed checkpoint: nothing has been "
+                     "changed or removed without the record key.")
         line = (f"{calls} on the record, "
                 + (f"{refused} refused, " if refused else "") + check)
         return _text(line, {
