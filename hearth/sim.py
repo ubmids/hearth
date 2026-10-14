@@ -42,7 +42,14 @@ ITEMS = r"(warfarin|blood thinners?|ensure|pill organi[sz]er|furosemide|metformi
 APPTS = r"(cardiology|cardiologist|dentist|doctor|podiatrist|eye clinic|appointment|check-?up|physio\w*|hospital)"
 
 
-def _med(text: str) -> str:
+def _med(text: str) -> str | None:
+    """The medicine named in what was said, or None if none was named.
+
+    None matters. "I'm taking my pills" used to become warfarin by default, so
+    a dose of something else was logged against the blood thinner and the real
+    warfarin was then refused. An unnamed medicine is passed on as said, and
+    Hearth asks which one before it writes anything down.
+    """
     low = text.lower()
     for alias, med in MED_ALIASES.items():
         if alias in low:
@@ -50,7 +57,50 @@ def _med(text: str) -> str:
     m = re.search(r"\b(" + NAMED_MEDS + r")\b", low)
     # Said as it was said: Hearth normalises the name, and a medicine it has
     # no rule for gets "check with Ada", not a guess at which one it was.
-    return m.group(1) if m else "warfarin"
+    return m.group(1) if m else None
+
+
+def _said_med(low: str, ctx: dict) -> str:
+    """What to pass as `medication`: the named one; else, for "it" or "them"
+    straight after a turn about one medicine, that medicine; else the word
+    that was said ("pills"), which Hearth answers with "which medicine?"."""
+    named = _med(low)
+    if named:
+        return named
+    if ctx.get("medication") and re.search(r"\b(it|them|that one)\b", low):
+        return str(ctx["medication"])
+    m = re.search(MEDS, low)
+    return m.group(1) if m else "it"
+
+
+_QUESTION_START = re.compile(
+    r"^(?:alexa,?\s*)?(?:should|shall|can|could|may|do|does|did|is|am|are|has|"
+    r"have|was|were|when|what|which|how|will|would|must|ought)\b")
+_QUESTION_ANY = re.compile(
+    r"\b(?:is it (?:ok|okay|safe|all right|alright|time)|am i (?:allowed|due|ok|"
+    r"okay|supposed)|is that (?:ok|okay|all right|alright|safe)|do i need|or not)\b")
+
+
+def is_question(said: str) -> bool:
+    """A question about a dose must never record one. Speech arrives without
+    punctuation, so a leading modal or auxiliary counts as a question mark."""
+    s = said.strip()
+    low = s.lower().strip(" .!")
+    return (s.endswith("?") or bool(_QUESTION_START.match(low))
+            or bool(_QUESTION_ANY.search(low)))
+
+
+_NUMBERS = {"two": 2, "three": 3, "four": 4, "five": 5, "both": 2, "a couple of": 2}
+
+
+def _count(low: str) -> int:
+    """How many were taken: "I took two aspirin" is two doses, not one."""
+    m = re.search(r"\b(\d+|two|three|four|five|both|a couple of)\s+(?:of\s+)?"
+                  r"(?:my\s+|her\s+|his\s+|the\s+)?" + MEDS, low)
+    if not m:
+        return 1
+    n = m.group(1)
+    return max(1, min(10, int(n) if n.isdigit() else _NUMBERS[n]))
 
 
 def plan_rules(said: str, speaker: str, context: dict | None = None) -> list[dict]:
@@ -73,21 +123,36 @@ def plan_rules(said: str, speaker: str, context: dict | None = None) -> list[dic
         return [{"name": "why", "arguments": {"domain": dom} if dom else {}}]
     if re.search(r"\b(what have you done|show (?:me )?the record|the record)\b", low):
         return [{"name": "record", "arguments": {"limit": 8}}]
-    if ctx.get("checkout") and re.fullmatch(r"(yes|yeah|yep|go ahead|do it|place (?:the|it)|please do|ok(?:ay)?|sure|pay)[\w ,]*", low):
+    if (ctx.get("checkout")
+            and re.fullmatch(r"(yes|yeah|yep|go ahead|do it|place (?:the|it)|please do|ok(?:ay)?|sure|pay)[\w ,]*", low)
+            and not re.search(r"\b(took|taken|take|taking|gave|given|giving)\b", low)):
         return [{"host": "checkout.complete", "checkout": ctx["checkout"]}]
-    if re.search(r"\b(has|did|have)\b.*\b(had|taken|take|got)\b", low) and re.search(MEDS, low):
-        return [{"name": "check_dose", "arguments": {"medication": _med(low),
-                                                      "asked_by": speaker}}]
-    if (re.search(r"\b(take|taking|took|give|giving|gave|have|having|time for)\b", low)
-            and re.search(MEDS, low) and not re.search(r"\ba day\b|\bdaily\b", low)):
-        return [{"name": "give_dose", "arguments": {"medication": _med(low),
-                                                     "given_by": speaker}}]
     if re.search(r"\b(re-?order|order more|running (?:low|out)|nearly out|almost out|need more|down to)\b", low):
         m = re.search(ITEMS, low)
-        item = m.group(1) if m else "warfarin"
+        item = m.group(1) if m else (_med(low) or "warfarin")
         qty = 2 if re.search(r"\b(two|2)\s+(?:packs|cases|boxes)\b", low) else 1
-        return [{"name": "reorder", "arguments": {"item": _med(item) if re.search(MEDS, item) else item,
-                                                   "asked_by": speaker, "quantity": qty}}]
+        return [{"name": "reorder", "arguments": {
+            "item": (_med(item) or item) if re.search(MEDS, item) else item,
+            "asked_by": speaker, "quantity": qty}}]
+    mentions_dose = (bool(re.search(MEDS, low))
+                     or bool(re.search(r"\b(took|taken|gave|given)\b.*\b(it|them)\b", low))
+                     or bool(ctx.get("medication") and re.search(
+                         r"\b(take|taking|had|have|give)\b.*\b(it|them|that one)\b", low)))
+    if mentions_dose and is_question(s):
+        # "Should I take my tablet now?" is a question. It is answered from
+        # the record and changes nothing; only a report of a dose is logged.
+        return [{"name": "check_dose", "arguments": {"medication": _said_med(low, ctx),
+                                                      "asked_by": speaker}}]
+    if (mentions_dose
+            and re.search(r"\b(take|taking|took|taken|give|giving|gave|given|have|"
+                          r"having|had|time for)\b", low)
+            and not re.search(r"\ba day\b|\bdaily\b|\bevery\b|\bnot\b|n't\b|\bwait\b|"
+                              r"\blater\b|\bskip", low)):
+        args = {"medication": _said_med(low, ctx), "given_by": speaker}
+        n = _count(low)
+        if n > 1:
+            args["count"] = n
+        return [{"name": "give_dose", "arguments": args}]
     m = re.search(APPTS, low)
     if m and re.search(r"\b(moved|move|book|reschedul\w*|changed|is now|sort)\b", low):
         when = re.search(r"\b((?:on )?(?:mon|tues|wednes|thurs|fri|satur|sun)day(?: at [\w:. ]+?)?|tomorrow(?: at [\w:. ]+?)?|at \d[\w:. ]*?)(?:[,.]|\bsort\b|$)", low)
@@ -212,7 +277,15 @@ def plan(said, speaker, tools, context=None) -> dict:
     if calls:
         model = (os.getenv("HEARTH_SIM_LLM_MODEL") or os.getenv("HEARTH_LLM_MODEL")
                  or "model")
-        return {"planner": f"model:{model} + skill:hearth-care", "calls": calls}
+        label = f"model:{model} + skill:hearth-care"
+        if is_question(said) and any(c["name"] == "give_dose" for c in calls):
+            # A question never records a dose, whatever the model read.
+            calls = [({"name": "check_dose", "arguments": {
+                          "medication": c["arguments"].get("medication", "it"),
+                          "asked_by": speaker}}
+                      if c["name"] == "give_dose" else c) for c in calls]
+            label += " · dose guard"
+        return {"planner": label, "calls": calls}
     return {"planner": "rules", "calls": rules}
 
 

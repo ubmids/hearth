@@ -231,8 +231,8 @@ def test_a_slow_local_model_gets_its_own_timeout_and_a_warm_up():
                       HEARTH_SIM_LLM_API_KEY="local", HEARTH_SIM_LLM_MODEL="qwen-3b")
     try:
         STUB["reply"] = {"tool_calls": [{"function": {
-            "name": "give_dose",
-            "arguments": json.dumps({"medication": "blood thinner", "given_by": "Rose"})}}]}
+            "name": "check_dose",
+            "arguments": json.dumps({"medication": "blood thinner", "asked_by": "Tom"})}}]}
         STUB["delay"] = 0.6
         os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "0.2"
         out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)

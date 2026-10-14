@@ -1696,7 +1696,7 @@ def test_bad_arguments_are_a_tool_error_that_leaks_no_python():
     text = got["result"]["content"][0]["text"]
     assert got["result"]["isError"] is True, got
     assert text == ("Invalid arguments for give_dose: unexpected bogus; this tool "
-                    "takes medication, given_by, person"), text
+                    "takes medication, count, given_by, person"), text
     for leak in ("HearthMCP", "_tool_", "keyword argument", "Traceback"):
         assert leak not in text, text
     typed = result_of(c, tok, "record", limit=[1])["result"]

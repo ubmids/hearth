@@ -26,7 +26,6 @@
             "i just gave mom her {medication}",
             "i took my {medication}",
             "i've taken my {medication}",
-            "can i take my {medication}",
             "let me take my {medication}"
           ]
         },
@@ -46,7 +45,15 @@
             "has she had her {medication}",
             "did i take my {medication}",
             "did i already take my {medication} today",
-            "did she take her {medication}"
+            "did she take her {medication}",
+            "can i take my {medication}",
+            "can i take my {medication} now",
+            "should i take my {medication}",
+            "should i take my {medication} now",
+            "can i have my {medication}",
+            "is it time for my {medication}",
+            "do i need to take my {medication}",
+            "am i due my {medication}"
           ]
         },
         {

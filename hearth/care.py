@@ -108,6 +108,20 @@ def med_name(text: str, known=()) -> str:
     return t.replace(" ", "_")
 
 
+# What people say when they have not said which medicine it is.
+UNNAMED = {"", "it", "them", "that", "this", "one", "that_one", "medicine",
+           "medicines", "medication", "medications", "meds", "pill", "tablet",
+           "capsule", "something", "usual", "my_usual"}
+
+
+def unnamed(text) -> bool:
+    """True when what was said does not name a medicine ("my pills", "it").
+    A dose of an unnamed medicine is never written down: it would be logged
+    against whichever medicine a guess picked, and the real dose of that one
+    refused later."""
+    return med_name(text) in UNNAMED
+
+
 def med_spoken(med: str) -> str:
     """`vitamin_d` is a key; "vitamin D" is what a person hears."""
     words = med.replace("_", " ").split()
@@ -266,14 +280,15 @@ class Care:
         given = [d for d in self.book.doses
                  if d["medication"] == med and d.get("person") == pid
                  and local(d["at"]).date() == today]
+        taken = sum(int(d.get("count", 1)) for d in given)
         limit = None
         if per_day.winner and str(per_day.winner.value).isdigit():
             limit = int(per_day.winner.value)
         return {"medication": med, "person": who, "per_day": per_day,
-                "due": due, "given": given, "limit": limit,
-                "remaining": (None if limit is None else max(0, limit - len(given)))}
+                "due": due, "given": given, "taken": taken, "limit": limit,
+                "remaining": (None if limit is None else max(0, limit - taken))}
 
-    def give(self, medication, given_by, person=None, now=None) -> dict:
+    def give(self, medication, given_by, person=None, now=None, count=1) -> dict:
         """Record a dose, or refuse one that would go over the day's limit.
 
         The refusal is the whole point and it is decided here, in code, from the
@@ -282,32 +297,39 @@ class Care:
         whether or not the agent ever mentions it.
         """
         now = now or time.time()
+        count = max(1, min(10, int(count or 1)))
         st = self.dose_status(medication, person, now)
         who, med = st["person"], st["medication"]
         pid = who.id if who else None
         giver = self._name(given_by)
         self_given = bool(who and who.answers_to(given_by))
         her = "you" if self_given else (who.name if who else "them")
-        if st["limit"] is not None and st["remaining"] == 0:
-            last = st["given"][-1]
+        if st["limit"] is not None and st["remaining"] < count:
             # The note is filed in the third person because it is read back
             # later to whoever asks why; the reply to Mom says "you".
-            note = (f"{self._name_id(last['given_by'])} gave "
-                    f"{who.name if who else 'them'} today's {med} "
-                    f"{when_said(last['at'], now)}.")
+            if st["given"]:
+                last = st["given"][-1]
+                note = (f"{self._name_id(last['given_by'])} gave "
+                        f"{who.name if who else 'them'} today's {med} "
+                        f"{when_said(last['at'], now)}.")
+                spoken = (f"{self._name_id(last['given_by'])} gave you "
+                          f"today's {med} {when_said(last['at'], now)}.")
+            else:
+                note = spoken = (f"That would be {count} {med} at once, more "
+                                 f"than a day allows.")
             a = self.ledger.record(
                 f"stopped a second {med} for {who.name if who else 'them'}",
                 f"medication.{med}", resolution=st["per_day"], outcome="refused",
                 by=giver, source="hearth", note=note, at=now)
             st.update(outcome="refused", action=a, note=note,
-                      spoken_note=(f"{self._name_id(last['given_by'])} gave you "
-                                   f"today's {med} {when_said(last['at'], now)}."
-                                   if self_given else note))
+                      spoken_note=spoken if self_given else note)
             return st
         dose = {"id": _id("dose"), "medication": med, "person": pid,
                 "given_by": (self.h.member_named(given_by).id
                              if self.h.member_named(given_by) else giver),
                 "at": now}
+        if count > 1:
+            dose["count"] = count
         self.book.doses.append(dose)
         self.book.save()
         a = self.ledger.record(

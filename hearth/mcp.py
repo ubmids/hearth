@@ -180,8 +180,10 @@ TOOLS = [
         "name": "check_dose",
         "title": "Has she had her medicine",
         "description": ("Answer whether a medicine has been given today, by whom and "
-                        "when, and whether another dose is allowed. Call for any "
-                        "question like 'did Mum take her blood thinner?'."),
+                        "when, and whether another dose is allowed. Records nothing. "
+                        "Call for ANY question about a dose, including 'should I "
+                        "take my tablet now?', 'can I have my warfarin?' and 'did "
+                        "Mum take her blood thinner?'."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -195,15 +197,20 @@ TOOLS = [
     {
         "name": "give_dose",
         "title": "Log a dose, or stop a second one",
-        "description": ("Call whenever someone says they are taking, giving or about "
-                        "to take a medicine. Hearth checks the household's rule and "
-                        "today's record and REFUSES a dose over the daily limit. Say "
-                        "its answer as given; never tell anyone to go ahead if it "
-                        "refused."),
+        "description": ("Call when someone REPORTS that they are taking, giving or "
+                        "about to take a medicine ('I'm taking my blood thinner', "
+                        "'I gave Mom her warfarin'). Never for a question: a question "
+                        "goes to check_dose, because this records a dose. Hearth "
+                        "checks the household's rule and today's record and REFUSES "
+                        "a dose over the daily limit. Pass the medicine as said; if "
+                        "none was named, Hearth asks which. Say its answer as given; "
+                        "never tell anyone to go ahead if it refused."),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "medication": {"type": "string"},
+                "count": {"type": "integer", "minimum": 1, "maximum": 10,
+                          "description": "How many were taken at once, if said ('two aspirin'). Default 1."},
                 "given_by": {"type": "string", "description": "Who is giving it. If she is taking it herself, her name."},
                 "person": {"type": "string", "description": "Who takes it. Optional."},
             },
@@ -775,10 +782,62 @@ class HearthMCP:
                 f"{phrasing.spoken(w.domain, w.slot, w.value)}, "
                 f"{carelib.when_said(w.stated_at, self._now)}")
 
+    def _which_med(self, who, asking):
+        """Asked about a dose without naming the medicine."""
+        name = (who.aliases[0] if (who and who.aliases and asking) else "")
+        line = (f"Which medicine do you mean{', ' + name if name else ''}? "
+                "I only write a dose down when I know which one it is.")
+        return _text(line, {"pattern": "card", "tone": "warn",
+                            "eyebrow": f"{who.name if who else 'Medicine'}",
+                            "title": "Which medicine?",
+                            "body": "Nothing was recorded."},
+                     outcome="ask", medication=None)
+
     def _tool_check_dose(self, medication, person=None, asked_by=None):
+        who0 = self.care.person(person)
+        self_ask = bool(who0 and asked_by and who0.answers_to(asked_by))
+        if carelib.unnamed(medication):
+            # A question may name no medicine ("should I take my tablet?").
+            # Reading is harmless, so if this person has exactly one medicine
+            # with a rule, that is the one; otherwise ask.
+            mine = sorted({b.domain.partition(".")[2] for b in self.h.beliefs
+                           if b.domain.startswith("medication.") and b.is_live()
+                           and (not who0 or b.scope == who0.id)})
+            if len(mine) != 1:
+                return self._which_med(who0, self_ask)
+            medication = mine[0]
         st = self.care.dose_status(medication, person, self._now)
         who, med = st["person"], st["medication"]
         her = who.name if who else "They"
+        if self_ask:
+            name = who.aliases[0] if who.aliases else ""
+            if st["given"] and st["remaining"] == 0:
+                last = st["given"][-1]
+                line = (f"Not now{', ' + name if name else ''}. "
+                        f"{self.care._name_id(last['given_by'])} gave you today's {med} "
+                        f"{carelib.when_said(last['at'], self._now)}. Your {med} is "
+                        f"{phrasing.spoken('medication', 'per_day', str(st['limit']))}, "
+                        "so not another until tomorrow.")
+            elif st["given"]:
+                last = st["given"][-1]
+                line = (f"You had {med} {carelib.when_said(last['at'], self._now)}."
+                        + (f" {st['remaining']} more allowed today."
+                           if st["remaining"] else ""))
+            else:
+                line = f"You haven't had your {med} today."
+                if st["due"].winner:
+                    line += (" It is due at "
+                             + phrasing.spoken("meals", "x", st["due"].winner.value) + ".")
+                line += " Tell me when you take it and I'll write it down."
+            tone = "stop" if (st["given"] and st["remaining"] == 0) else (
+                "ok" if st["given"] else "warn")
+            return _text(line, {
+                "pattern": "card", "tone": tone, "eyebrow": f"{her} · {med}",
+                "title": ("Already taken today" if tone == "stop" else
+                          "Taken today" if st["given"] else "Not taken yet today"),
+                "body": self._rule_meta(st), "items": self._dose_items(st),
+                "footer": "A question: nothing was recorded"},
+                medication=med, given_today=st["taken"], limit=st["limit"])
         if not st["given"]:
             line = f"No, {her} has not had {med} today."
             if st["due"].winner:
@@ -797,10 +856,14 @@ class HearthMCP:
             "pattern": "card", "tone": tone, "eyebrow": f"{her} · {med}",
             "title": ("Taken today" if st["given"] else "Not taken yet today"),
             "body": self._rule_meta(st), "items": self._dose_items(st)},
-            medication=med, given_today=len(st["given"]), limit=st["limit"])
+            medication=med, given_today=st["taken"], limit=st["limit"])
 
-    def _tool_give_dose(self, medication, given_by, person=None):
-        st = self.care.give(medication, given_by, person, now=self._now)
+    def _tool_give_dose(self, medication, given_by, person=None, count=1):
+        if carelib.unnamed(medication):
+            who = self.care.person(person)
+            return self._which_med(who, bool(who and who.answers_to(given_by)))
+        st = self.care.give(medication, given_by, person, now=self._now,
+                            count=count)
         who, med = st["person"], st["medication"]
         her = who.name if who else "them"
         self_given = bool(who and who.answers_to(given_by))
@@ -812,7 +875,7 @@ class HearthMCP:
                     f"so not another until tomorrow.")
             return _text(line, {
                 "pattern": "card", "tone": "stop", "eyebrow": f"{her} · {med}",
-                "title": "Already taken today",
+                "title": "Already taken today" if st["given"] else "Over today's limit",
                 "body": "Not another until tomorrow.",
                 "items": self._dose_items(st) + [{
                     "label": "The rule", "detail": self._rule_meta(st),
