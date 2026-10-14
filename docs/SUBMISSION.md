@@ -139,6 +139,11 @@ family's shared memory and its conscience.
   planner loads it. `demo/assistant.py` is written to run it with Claude Code
   as a second MCP client; that run has not happened yet.
 - **One household per account**, isolated, persisted to disk.
+- **A classic Alexa skill that is an MCP client of Hearth** (`skill/`, ASK SDK
+  for Python): Alexa's NLU picks the intent, the skill makes the `tools/call`
+  over Streamable HTTP, says Hearth's text verbatim, and draws Hearth's card in
+  APL on an Echo Show. Tested locally against a running Hearth for all nine
+  scenes; deploying it to Amazon is a step for Subomi (`skill/README.md`).
 - **Tests**: Hearth's own suite (conformance tests written from the Alexa+
   requirements as documented, the care household, the record, resolution,
   phrasing, extraction, the listing, the simulator), an interop test in which
@@ -173,12 +178,42 @@ model naming the speaker. After that, pharmacy and ride partners through the
 same UCP and tool surfaces, and a signed daily digest of the record sent to the
 family, so that even the operator cannot rewrite it unnoticed.
 
+## Open Source mini challenge
+
+- **Contribution URL:** https://github.com/ubmids/alexa-plus-mcp-checks
+  (private until Subomi makes it public; it must be public, with its MIT
+  licence showing, to qualify)
+- **Project repository URL:** https://github.com/ubmids/hearth
+- **GitHub username:** ubmids
+- **What it is:** `alexa-plus-mcp-checks`, a new MIT-licensed pytest plugin and
+  GitHub Action that checks any self-hosted MCP server against the places where
+  the Alexa+ MCP toolkit departs from stock MCP (a `401` without
+  `WWW-Authenticate`, both well-known documents with `S256`, query-string
+  tokens refused, MCP Apps `_meta.ui.resourceUri` on the tool and the result,
+  the 500 ms budget) and the MCP 2025-11-25 transport rules (Origin 403,
+  protocol-version 400, session 400, batches refused, bad arguments as
+  `isError`).
+- **How it works:** `pytest --alexa-mcp-url https://host/mcp` (or the
+  `alexa-mcp-check` command, or the Action) runs 13 checks with plain-English
+  failures naming the requirement and its source. Its own suite (35 tests)
+  runs every check against a conformant stdlib fake server and 18 broken
+  variants, each of which must fail exactly its own check.
+- **Why it matters:** the Alexa+ add-on tools and simulator are partner-only, so
+  most developers cannot find out whether their server would connect. Most of
+  what goes wrong is protocol, and protocol does not need gated access. Run
+  against Hearth's code from before this week's fixes, it caught four MUST
+  violations (Origin, protocol version, batch, isError) and one SHOULD
+  (session); against the
+  current code all 13 pass (`docs/hearth-before-run.txt`, `docs/hearth-run.txt`
+  in that repository).
+
 ## Built with
 
 `mcp` (spec 2025-11-25, Streamable HTTP) · `mcp-apps` · `universal-commerce-protocol`
-· `oauth2.1-pkce` · `agent-skills` · `alexa-plus` (simulated) · `python` ·
-`fastapi` · `uvicorn` · `piper-tts` · `amazon-polly` (optional) · `playwright`
-(rehearsal) · `claude-code` (second MCP client)
+· `oauth2.1-pkce` · `agent-skills` · `alexa-plus` (simulated) · `alexa-skills-kit`
+(classic skill, `ask-sdk-core`, APL) · `python` · `fastapi` · `uvicorn` ·
+`piper-tts` · `amazon-polly` (optional) · `llama.cpp` (optional local planner) ·
+`playwright` (rehearsal) · `@modelcontextprotocol/conformance` (CI)
 
 ## Links
 

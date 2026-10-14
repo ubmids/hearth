@@ -122,6 +122,14 @@ Claude Code as a client with Hearth's Agent Skill (`skills/hearth-care/SKILL.md`
 as its instructions; it has not yet been run end to end (it needs a logged-in
 `claude`).
 
+**On a real Echo, today.** `skill/` is a classic Alexa custom skill (ASK SDK
+for Python) whose handler is an MCP client of Hearth: Alexa's NLU picks the
+intent, the skill makes the Hearth `tools/call` over Streamable HTTP, says
+Hearth's text verbatim and draws Hearth's card in APL on an Echo Show.
+`skill/tests/test_skill.py` drives the real handler against a running Hearth
+for all nine scenes. It has not been deployed to Amazon yet; `skill/README.md`
+has the steps.
+
 To reach it from Alexa+ once the toolkit is available to you:
 
 ```bash
@@ -136,11 +144,16 @@ for t in tests/test_*.py; do [ "$t" = tests/test_live.py ] || python3 $t; done
 python3 tests/test_live.py https://<deployment>    # the same checks over the network
 ```
 
-160 tests, all green: 62 Alexa+ conformance, 24 care and record, 23 contest
-resolution, 18 phrasing, 17 extraction, 9 listing, 6 simulator, and one
-interop test in which the **official MCP Python SDK client** (`pip install -r
+184 tests, all green: 68 conformance (the Alexa+ requirements as documented,
+plus the MCP 2025-11-25 transport rules), 31 care and record, 23 contest
+resolution, 18 phrasing, 17 extraction, 9 listing, 9 simulator, 8 for the
+classic Alexa skill (`python3 skill/tests/test_skill.py`), and one interop test
+in which the **official MCP Python SDK client** (`pip install -r
 requirements-dev.txt`) negotiates 2025-11-25 with Hearth over a real socket,
 lists the tools, gets the refused dose with its card, and closes its session.
+`scripts/conformance.sh` runs the official MCP conformance suite (needs node).
+The Alexa+-specific checks are also packaged on their own as a pytest plugin
+and GitHub Action, [`alexa-plus-mcp-checks`](https://github.com/ubmids/alexa-plus-mcp-checks).
 `python3 demo/shots.py http://localhost:8000 shots` plays every scene on the
 simulated client in a headless browser and fails on any page error. Parts of the
 suite came from hand mutation testing: `oauth.py`, `household.py` and `app.py`
@@ -154,7 +167,13 @@ mutation-score report.
   MCP App, the checkout endpoints, the simulated client's MCP traffic.
 - Sandbox: the ride provider and the pharmacy. Nothing books a car or charges a
   card. Both are named "sandbox" wherever they appear.
-- Simulated: Alexa+ itself (see above).
+- Simulated: Alexa+ itself (see above). The classic Alexa skill in `skill/`
+  is real Alexa, but it is a classic custom skill, not an Alexa+ add-on, and it
+  has been tested locally only so far.
+- The planner: built-in rules unless a model is configured. A dose being taken
+  is always routed by the rules, whatever a model would say.
+  `docs/LOCAL_PLANNER.md` measures a 3B model on CPU as the planner (right tool
+  every time, 3–9 s a line: not fast enough for camera).
 - Not a medical device. Hearth enforces the rules the family gives it; it does
   not know pharmacology. The rule extractor without a model key is a small,
   deterministic set of patterns; `HEARTH_LLM_*` plugs in any OpenAI-compatible

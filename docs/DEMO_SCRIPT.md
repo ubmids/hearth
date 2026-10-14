@@ -36,7 +36,7 @@ with whichever is true and do not hide the header.
 | 1:36–1:50 | Tom asks about coffee. | **Tom:** "Alexa, can Mom have a coffee?" **Alexa:** "Mom's coffee stops at three. Ada set it 12 days ago. Tom said six, but Ada has the say over what she eats and drinks." | **Disagreements, settled out loud** |
 | 1:50–2:02 | Ada ends the antibiotics. | **Ada:** "Mom finished the antibiotics." **Alexa:** "Understood, the antibiotics are over. Ada's rule that Mom's alcohol is off limits no longer applies." | **Rules that end by themselves** |
 | 2:02–2:16 | **"Alexa, show me the record."** Card: N calls, chain intact, #1 refused in red. Zoom on the traffic panel's `record #n` badges. | **Alexa:** "9 calls on the record, 1 refused, and the chain is intact: nothing has been edited or removed." Narrator: "Every tool call, written by the server as it happens, hash-chained. Not what the assistant says it did." | **An honest record** |
-| 2:16–2:30 | Split screen: a terminal running Claude Code with the `hearth-care` Agent Skill, calling the same server (`demo/assistant.py`), its `tools/call` lines scrolling. | Narrator: "Hearth is a standard MCP server, so any assistant can use it. Here's Claude, following Hearth's Agent Skill, on the same household." | **Same server · any MCP client · Agent Skill** |
+| 2:16–2:30 | **PENDING (Subomi): real Echo Show.** Rose's line again, on a real Echo Show running the classic skill in `skill/`, the red card in APL. Not yet filmed: the skill has to be deployed first (`skill/README.md`). Fallback if not filmed: Claude Code with the `hearth-care` Agent Skill (`demo/assistant.py`, also not yet run). If neither exists, cut this slot. | Narrator: "Hearth is a standard MCP server, so any client can use it. This is a real Echo, through a classic Alexa skill that calls the same server." | **Real Echo · classic Alexa skill → Hearth's MCP server** · *Alexa+ add-on tools are partner-only* |
 | 2:30–2:45 | Terminal: `scripts/conformance.sh` printing six `PASS` lines from the official MCP conformance suite, then `curl -i` showing `mcp-protocol-version: 2025-11-25` and `Server-Timing`. | Narrator: "MCP 2025-11-25 over Streamable HTTP, passing the official conformance suite, plus OAuth 2.1 with PKCE and the three places Alexa+ departs from stock MCP, all tested. The server spends a tenth of a millisecond on a call." | **MCP 2025-11-25 · Streamable HTTP · OAuth 2.1 + PKCE · MCP Apps · UCP checkout** |
 | 2:45–2:52 | Back to the Echo Show, the red card from 0:03. | Narrator: "Hearth. The memory, and the conscience, of a family caring for someone." | **hearth** · github.com/ubmids/hearth · *Alexa+ is simulated: add-on tools are partner-only* |
 
@@ -77,9 +77,17 @@ antibiotics. Never cut 0:00–0:20, the purchase, or the record.
 5. **Fallback audio:** `demo/hold-on-rose.m4a` is the whole conversation
    rendered offline (`demo/voice.py`), with `demo/hold-on-rose.srt` as
    captions, if screen-recording the page's audio is awkward.
-6. **The Claude segment** (2:16): `python3 demo/assistant.py http://localhost:8000`
-   with a logged-in `claude` on PATH. It writes `demo/assistant.md`; record the
-   terminal while it runs.
+6. **The 2:16 segment.** First choice: the classic skill on a real Echo Show
+   (deploy it per `skill/README.md`, point it at the redeployed Hearth, film
+   Rose's line in the kitchen). Fallback: `python3 demo/assistant.py
+   http://localhost:8000` with a logged-in `claude` on PATH, which writes
+   `demo/assistant.md`; record the terminal while it runs.
+
+**Timing check (red-team audit, against the real audio):** as written the
+video runs about 3:06. The narrator line at 0:14 is about 22 words for a 6 s
+slot, the on-camera line at 0:20 about 50 words for 14 s, and Tom's catch-up
+about 21 s for a 16 s slot. Cut to ≤15 and ≤35 words, and cut the coffee scene
+if it still runs long.
 
 ## Rules this video has to satisfy
 
