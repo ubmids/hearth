@@ -392,6 +392,15 @@ def test_the_system_prompt_asks_for_the_shape_the_parser_expects():
     print("PASS the system prompt asks for the shape the parser expects")
 
 
+def teardown_module(module=None):
+    """Under pytest the model settings must not outlive this file: left set,
+    every later suite in the same process saw a configured model and the
+    planner and extractor stopped behaving like the defaults they test."""
+    SRV.shutdown()
+    for k in ("HEARTH_LLM_BASE_URL", "HEARTH_LLM_API_KEY", "HEARTH_LLM_MODEL"):
+        os.environ.pop(k, None)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     try:
