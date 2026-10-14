@@ -25,7 +25,9 @@ async def main(base, out):
         page = await browser.new_page(viewport={"width": 1600, "height": 900})
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
-        await page.goto(f"{base}/alexa?mute=1")
+        # SHOTS_FILM=1 takes them in the full-width film view used for the video.
+        film = "&film=1" if os.getenv("SHOTS_FILM") == "1" else ""
+        await page.goto(f"{base}/alexa?mute=1{film}")
         await page.wait_for_selector("#wiresub:has-text('Session')", timeout=20000)
         await page.screenshot(path=os.path.join(out, "00-connected.png"))
         for i, name in enumerate(NAMES, 1):

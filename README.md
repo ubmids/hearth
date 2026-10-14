@@ -153,9 +153,12 @@ for t in tests/test_*.py; do [ "$t" = tests/test_live.py ] || python3 $t; done
 python3 tests/test_live.py https://<deployment>    # the same checks over the network
 ```
 
-184 tests, all green: 68 conformance (the Alexa+ requirements as documented,
-plus the MCP 2025-11-25 transport rules), 31 care and record, 23 contest
-resolution, 18 phrasing, 17 extraction, 9 listing, 9 simulator, 8 for the
+204 tests, all green: 68 conformance (the Alexa+ requirements as documented,
+plus the MCP 2025-11-25 transport rules), 37 care and record (truncation,
+edit-and-rehash, reorder and deletion of the record all caught), 8 dose
+safety (questions never log a dose), 3 phone notification, 23 contest
+resolution, 18 phrasing, 17 extraction, 9 listing, 12 simulator (including the
+Bedrock planner against a fake Converse endpoint), 8 for the
 classic Alexa skill (`python3 skill/tests/test_skill.py`), and one interop test
 in which the **official MCP Python SDK client** (`pip install -r
 requirements-dev.txt`) negotiates 2025-11-25 with Hearth over a real socket,
