@@ -104,9 +104,11 @@ family's shared memory and its conscience.
   until "Mom finished the antibiotics", then stops applying by itself.
 - **It buys the Alexa+ way.** "Reorder her warfarin" prices the refill and
   checks it against Ada's $50 limit and last week's orders. The card shows
-  those checks and a Pay button. Alexa+ then runs the checkout on Hearth's
-  Universal Commerce Protocol endpoints (voice PIN, the card on the account,
-  idempotent completion), and Hearth never charges anything itself.
+  those checks and a Pay button. Per the Alexa+ payments docs, Alexa+ then
+  runs the checkout on Hearth's Universal Commerce Protocol endpoints (voice
+  PIN, the card on the account, idempotent completion); in the demo the
+  simulated client plays that part against a sandbox merchant. Hearth never
+  charges anything itself.
 - **It keeps an honest record.** The server writes down every tool call as it
   happens, with what it read and what it wrote, in a hash chain. If the
   assistant reports an action it never checked with Hearth first, "why did you
