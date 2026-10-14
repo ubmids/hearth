@@ -15,11 +15,15 @@ household:
   doses        every dose given, by whom, to whom, when
   appointments the calendar, with who is escorting and which ride is booked
   rides        rides booked for appointments (a sandbox provider)
-  board        the family notice board, which is how siblings hear about it
+  board        the family notice board, which is how siblings hear about it;
+               a post is also pushed to each recipient's phone when they have
+               a channel configured (hearth/notify.py, ntfy or a webhook)
   checkouts    pharmacy reorders, shaped like Alexa+'s UCP checkout sessions
 
-The rides provider and the pharmacy are sandboxes, named as such everywhere
-they surface. Nothing here books a real car or charges a real card.
+Calendar, rota, doses and board are Hearth's own books in this process, not
+outside services. The rides provider and the pharmacy are sandboxes, named as
+such everywhere they surface. Nothing here books a real car or charges a real
+card. The phone push is real when configured.
 
 Every function takes `now`, so the tests pin the clock instead of racing it.
 """
@@ -209,6 +213,7 @@ class CareBook:
         data = (store.load_aux("care") if store else None) or {}
         for k in self.KINDS:
             setattr(self, k, list(data.get(k, [])))
+        self.notifier = None          # set by Care; sends a post to phones
 
     def save(self):
         if self.store:
@@ -228,14 +233,19 @@ class CareBook:
         if about:
             p["about"] = about
         self.board.append(p)
+        if self.notifier:
+            self.notifier(p)
         return p
 
 
 class Care:
     """The care services, bound to one household, its ledger and its books."""
 
-    def __init__(self, household, ledger, book: CareBook):
+    def __init__(self, household, ledger, book: CareBook, notifier=None):
+        from .notify import Notifier
         self.h, self.ledger, self.book = household, ledger, book
+        if book.notifier is None:
+            book.notifier = notifier or Notifier(save=book.save)
 
     # --- who --------------------------------------------------------------
     def person(self, name=None):
@@ -450,11 +460,20 @@ class Care:
                 f"{clock(at)}, with a ride at {clock(ride['pickup'])}."
                 + (f" {escort} is taking {her}." if escort else
                    " Nobody is taking her yet."))
-        self.book.post(text, to=everyone, by=asker, now=now)
-        step("board", f"Told {', '.join(everyone[:-1]) + ' and ' + everyone[-1] if len(everyone) > 1 else (everyone[0] if everyone else 'nobody')} on the family board.")
+        post = self.book.post(text, to=everyone, by=asker, now=now)
+        names = (", ".join(everyone[:-1]) + " and " + everyone[-1] if len(everyone) > 1
+                 else (everyone[0] if everyone else "nobody"))
+        pushed = [d["to"] for d in post.get("delivered", [])]
+        line = f"Left a note for {names} on the family board"
+        if pushed:
+            line += (" and sent it to " + " and ".join(f"{n}'s phone" for n in pushed))
+        step("board", line + ".")
         self.book.save()
         return {"appointment": appt, "ride": ride, "escort": escort,
-                "steps": steps, "person": who}
+                "steps": steps, "person": who,
+                "notified": [{"to": d["to"], "via": d["via"]}
+                             for d in post.get("delivered", [])],
+                "told": everyone}
 
     # --- the pharmacy: a quote here, a checkout there, never a silent charge --
     #

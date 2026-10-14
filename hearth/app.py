@@ -914,6 +914,25 @@ not use it for anything other than running the service for you.</p>
                 "checkpoint": srv.trace.witness.latest(),
                 "public_key": srv.trace.witness.public_key}
 
+    # --- each person's inbox -----------------------------------------------
+    # The family board as one person sees it: every note addressed to them,
+    # and for each, whether it also reached their phone. This is what "told
+    # Tom" means, and it can be checked.
+    @app.get("/inbox/{name}")
+    async def inbox(name: str, request: Request):
+        tok = auth.verify(request.headers.get("authorization"))
+        if tok is None:
+            return _unauthorized()
+        hh, _, srv = home_for(tok.subject)
+        me = hh.member_named(name)
+        who = me.name if me else name.title()
+        notes = [{"text": p["text"], "from": p.get("by"), "at": p["at"],
+                  "when": carelib.when_said(p["at"]),
+                  "phone": next((d for d in p.get("delivered", []) if d["to"] == who),
+                                None)}
+                 for p in reversed(srv.care.book.board) if who in p.get("to", [])]
+        return {"person": who, "notes": notes[:20]}
+
     @app.get("/healthz")
     async def healthz():
         return {"ok": True, "protocol": PROTOCOL_VERSION,

@@ -44,7 +44,7 @@ why.
 | | |
 |---|---|
 | **Stops the second dose** | `give_dose` checks the family's rule (once a day, set by Ada, who holds the health care proxy) against today's record (given 9:10, by Grace) and refuses. In code, on the server: once the assistant reports the dose, nothing the model says can turn the refusal into a yes. "Warfarin sodium", "Jantoven 5 mg" and "her Coumadin" all reach the same rule, and a medicine with no rule gets "check with Ada", never "logged". |
-| **Sorts it out across services, in one request** | "Mom's cardiology moved to Thursday at ten, sort it out." Calendar moved, Tom assigned because the family rota says he does Thursdays, Tuesday's ride cancelled, a new ride booked for 9:15, the family board told, and a dose that falls during the trip called out. Four steps in one tool call (calendar, escort from the rota, ride cancelled and rebooked with a sandbox provider, family board), every step on the record. |
+| **Sorts it out in one request** | "Mom's cardiology moved to Thursday at ten, sort it out." Calendar moved, Tom assigned because the family rota says he does Thursdays, Tuesday's ride cancelled, a new ride booked for 9:15, a note left for Tom and Grace on the family board and pushed to Tom's phone, and a dose that falls during the trip called out. Five steps in one tool call, every step on the record. Calendar, rota and board are Hearth's own books; the ride provider is a sandbox; the phone push is real (ntfy or any webhook, `HEARTH_NOTIFY_<NAME>`). |
 | **Remembers across sessions and devices** | Tom, on his own Echo Dot that evening: "What did I miss with Mom?" Hearth knows when he last talked to the house and tells him only what changed since, including the dose it stopped. |
 | **Settles disagreements, and says how** | Tom says Mom can have coffee till six; Ada said three because it keeps her up. "Mom's coffee stops at three. Tom said six, but Ada has the say over what she eats and drinks." A medication rule from someone without the say is only a proposal: "Ada has the say over Mom's warfarin, so it stays once a day until Ada confirms." |
 | **Lets situations end** | "No wine while she's on the antibiotics" holds until "Mom finished the antibiotics", then stops applying by itself. |
@@ -167,8 +167,12 @@ mutation-score report.
 
 ## What is real and what is not
 
-- Real: the MCP server, OAuth, the record, the refusals, the resolution, the
-  MCP App, the checkout endpoints, the simulated client's MCP traffic.
+- Real: the MCP server, OAuth, the record and its signed checkpoints, the
+  refusals, the resolution, the MCP App, the checkout endpoints, the simulated
+  client's MCP traffic, and the push to a family member's phone when a channel
+  is configured.
+- Hearth's own books, not outside services: the calendar, the rota, the dose
+  book and the family board live in Hearth's process and data files.
 - Sandbox: the ride provider and the pharmacy. Nothing books a car or charges a
   card. Both are named "sandbox" wherever they appear.
 - Simulated: Alexa+ itself (see above). The classic Alexa skill in `skill/`

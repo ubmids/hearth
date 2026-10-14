@@ -70,6 +70,9 @@
   .dot.speaking::after{border-color:var(--alexa);box-shadow:0 0 40px var(--alexa);animation:pulse 1.1s infinite}
   .dot.listening::after{border-color:rgba(30,200,255,.45)}
   .dotcap{text-align:center;color:var(--dim);font-size:13px;margin-top:-26px}
+  /* A real Echo shows a pulsing yellow ring when a notification is waiting. */
+  .dot.notified::after{border-color:#ffc35c;box-shadow:0 0 34px #ffc35c;animation:pulse 1.6s infinite}
+  .devices button .badge{display:inline-block;margin-left:6px;width:9px;height:9px;border-radius:50%;background:#ffc35c;box-shadow:0 0 8px #ffc35c}
 
   .talk{margin-top:14px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:6px}
   .turn{max-width:92%;padding:10px 14px;border-radius:14px;font-size:16px;line-height:1.45}
@@ -198,6 +201,7 @@ let checkout = null, rpcId = 1, cardUri = null, cardHtml = null;
 // server. "Show me the record" presents it, so a rewrite of the record that
 // re-signs everything still fails against what this device saw.
 let receipt = null, lastMed = null;
+const waiting = {};                       // person -> notes waiting, from the board
 const sessions = {};                      // device -> Mcp-Session-Id
 const voiceHumans = params.get("voices") !== "off";
 const film = params.get("film") === "1";
@@ -279,15 +283,20 @@ let frame = null, frameReady = false, pendingResult = null;
 function drawDevice() {
   const d = DEVICES[device];
   $("#devices").innerHTML = Object.entries(DEVICES).map(([k, v]) =>
-    `<button class="${k === device ? "on" : ""}" onclick="pickDevice('${k}')">${esc(v.name)}<small>${esc(v.where)}</small></button>`).join("");
+    `<button class="${k === device ? "on" : ""}" onclick="pickDevice('${k}')">${esc(v.name)}${devWaiting(k) ? '<span class="badge" title="notification waiting"></span>' : ""}<small>${esc(v.where)}</small></button>`).join("");
   if (!d.screen) {
-    $("#device").innerHTML = `<div class="dot" id="frameWrap"></div><div class="dotcap">${esc(d.name)} · ${esc(d.where)} · no screen, so Hearth's voice reply is the whole answer</div>`;
+    const n = devWaiting(device);
+    $("#device").innerHTML = `<div class="dot${n ? " notified" : ""}" id="frameWrap"></div><div class="dotcap">${esc(d.name)} · ${esc(d.where)} · ${n ? `${n.who} has a notification waiting${n.phone ? ", and it was pushed to his phone" : ""}` : "no screen, so Hearth's voice reply is the whole answer"}</div>`;
     frame = null; frameReady = false;
     return;
   }
   $("#device").innerHTML = `<div class="show" id="frameWrap"><div class="label">Simulated ${esc(d.name)}</div>
     <div class="screen"><div class="idle" id="idle">${clock()}<small>${esc(d.where)}</small></div></div><div class="lightbar"></div></div>`;
   frame = null; frameReady = false;
+}
+function devWaiting(dev) {
+  const who = Object.keys(PEOPLE).find(p => PEOPLE[p] === dev && waiting[p] && p !== "Rose" && p !== "Grace");
+  return who ? {who, phone: waiting[who].phone} : null;
 }
 function clock() { const n = new Date(); return n.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}); }
 function pickDevice(k) { device = k; drawDevice(); }
@@ -414,6 +423,9 @@ async function converse(who, said, opts = {}) {
     const sc = res.structuredContent || {};
     if (sc.record && sc.record.hash) receipt = {seq: sc.record.seq, hash: sc.record.hash};
     if (sc.medication !== undefined) lastMed = sc.medication;
+    for (const p of sc.told || []) waiting[p] = {phone: (sc.notified || []).some(n => n.to === p)};
+    if (c.name === "catch_up") delete waiting[who];
+    if ((sc.told || []).length || c.name === "catch_up") drawDevice();
     if (sc.checkout && sc.approved) checkout = sc.checkout;
     if (sc.card && sc.card.tone === "stop") tone = "stop";
     if (sc.card) showResult(res);

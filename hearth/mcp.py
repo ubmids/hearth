@@ -960,9 +960,11 @@ class HearthMCP:
                      f"{carelib.local(a['at']).strftime('%A')} {carelib.clock(a['at'])}",
             "items": [{"label": s["service"].title(), "detail": s["line"],
                        "status": s["status"]} for s in out["steps"]],
-            "footer": f"{len(out['steps'])} steps, one request. "
-                      "Rides are a sandbox provider."},
-            steps=out["steps"], appointment=a["id"])
+            "footer": f"{len(out['steps'])} steps, one request. Calendar, rota and "
+                      "board are Hearth's own; rides is a sandbox provider"
+                      + ("; the phone push is real." if out["notified"] else ".")},
+            steps=out["steps"], appointment=a["id"], told=out["told"],
+            notified=out["notified"])
 
     def _tool_reorder(self, item, asked_by, quantity=1):
         q = self.care.reorder(item, asked_by, quantity, now=self._now)

@@ -88,12 +88,14 @@ family's shared memory and its conscience.
   "Ada has the say over Mom's warfarin, so it stays once a day until Ada
   confirms." Ada settles it by saying the rule herself, and any change made in
   her name is pinned on her board, because Hearth cannot hear who is speaking.
-- **One request, four steps.** "Mom's cardiology moved to Thursday at ten,
+- **One request, five steps.** "Mom's cardiology moved to Thursday at ten,
   sort it out." Hearth moves the calendar entry, assigns Tom because the family
   rota says he does Thursdays, cancels Tuesday's ride and books a new one for
-  9:15 (a sandbox ride provider), tells the family board, and warns if a dose
-  falls during the trip. That is one sentence and one tool call, and every step
-  is on the record.
+  9:15 (a sandbox ride provider), leaves a note for Tom and Grace on the family
+  board and pushes it to Tom's phone (a real ntfy notification), and warns if a
+  dose falls during the trip. That is one sentence and one tool call, and every
+  step is on the record. The calendar, rota and board are Hearth's own books,
+  not outside services.
 - **It remembers across sessions and devices.** That evening, Tom asks his own
   Echo Dot "What did I miss with Mom?" Hearth knows when he last talked to the
   house and tells him only what has changed since, including the dose it
