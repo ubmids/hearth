@@ -30,9 +30,10 @@ your echo". This is that skill.
   only the launch and help lines, the checkout confirmation, and one safety
   line: if Hearth cannot be reached when someone is about to take a medicine,
   it says "please don't take it until someone has checked", never a guess.
-- **Alexa's NLU does the planning.** Eight intents map straight to Hearth tools
+- **Alexa's NLU does the planning.** Eleven intents map straight to Hearth tools
   (`give_dose`, `check_dose`, `catch_up`, `why`, `arrange`, `reorder`,
-  `whats_true`, `record`), with Alexa resolving "Coumadin" or "blood thinner" to
+  `whats_true`, `record`, `handover`, `shopping_list`, and `reorder` of the
+  list), with Alexa resolving "Coumadin" or "blood thinner" to
   warfarin and "Thursday at ten" to a date and a time. Anything else ("Mom
   finished the antibiotics") goes to Hearth's planner and then to the tools it
   names.
@@ -57,7 +58,7 @@ python3 skill/tests/test_skill.py
 
 The test starts a real Hearth on a free port (with `HEARTH_SKILL_TOKEN` set),
 then drives the skill's real `lambda_handler` with the JSON envelopes Alexa
-sends, for all nine demo scenes plus brand names, "this is Tom", a lost
+sends, for the demo scenes plus a carer's handover, brand names, "this is Tom", a lost
 session, an unreachable server and a wrong credential. Each reply is compared
 with the text Hearth itself recorded for that call. It also checks the
 interaction model: every intent handled, every slot typed, no duplicate
@@ -69,6 +70,9 @@ simulator, or spoken to on an Echo. The APL document has not been opened in
 the APL authoring tool. Those are the steps below.
 
 ## Deploy it
+
+`docs/ALEXA_TEST.md` is the step-by-step runbook, with what to type and
+expect in the console's simulator.
 
 You need: a free Amazon developer account (the same Amazon account as the Echo
 you will film), and Hearth deployed somewhere public over HTTPS.
@@ -97,11 +101,14 @@ JSON if the product is renamed).
 **4. Screen.** *Build* → *Interfaces* → turn on **Alexa Presentation Language**
 (tick Hub Landscape and Hub Round at least) → *Save* → *Build skill*.
 
-**5. Code.** *Code* tab, in the `lambda/` folder: replace `lambda_function.py`,
-add `hearth_client.py` and `apl.py` from `skill/lambda/`, and make
-`requirements.txt` contain `ask-sdk-core>=1.19`. Create `lambda/config.json`
-from `config.example.json` with your Hearth URL and the token from step 1
-(never commit that file; it is in `.gitignore`). *Save* → *Deploy*.
+**5. Code.** Create `skill/lambda/config.json` from `config.example.json`
+with your Hearth URL and the token from step 1 (never commit that file; it is
+in `.gitignore`), then run `scripts/skill_zip.sh`. In the console, *Code* tab →
+*Import Code* → `out/hearth-care-lambda.zip` → *Deploy*. (Or by hand: in the
+`lambda/` folder replace `lambda_function.py`, add `hearth_client.py`, `apl.py`
+and `config.json`, and make `requirements.txt` contain `ask-sdk-core>=1.19`.)
+Alexa-hosted runs Python 3.8; the handler and its MCP client use only the
+standard library and `ask-sdk-core`, and the tests pass on 3.8.
 
 **6. Try it in the console.** *Test* tab → set testing to **Development** →
 type `open hearth care`, then `I'm just going to take my blood thinner`. Expect
