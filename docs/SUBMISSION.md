@@ -6,7 +6,7 @@ amazonappdev2026.
 Judging: Stage One pass/fail (fits the theme, really uses the required tech),
 then four equally weighted criteria, Tech Implementation, Design, Potential
 Impact, Quality of the Idea (ties go to Tech Implementation), plus up to 10% for
-the friction log (`docs/FRICTION_LOG.md`, 11 platform entries).
+the friction log (`docs/FRICTION_LOG.md`, 12 platform entries).
 
 **Stage One gate.** The track requires "a working Agent Skill or a self-hosted
 MCP server, implementing MCP spec version 2025-11-25 … over Streamable HTTP",
@@ -37,11 +37,11 @@ Hearth
 
 ## Tagline / elevator pitch (200 characters)
 
-> Alexa+ can act now. Hearth makes that safe in a home caring for a parent: it
-> stops a second blood thinner, sorts out appointments across services, and
-> keeps an honest record.
+> Alexa+ can act now. Hearth makes that safe for a family caring for a parent:
+> it stops a second blood thinner, carries the carer's handover to the family,
+> and keeps an honest record.
 
-(174 characters.)
+(181 characters.)
 
 ## Text description
 
@@ -83,6 +83,16 @@ family's shared memory and its conscience.
   a yes. The name on the bottle ("warfarin sodium", "Jantoven 5 mg") reaches
   the same rule, and a medicine with no rule gets "check with Ada first", not
   "logged".
+- **It carries the carer's handover.** At the end of her shift Grace says
+  "I'm off. Mom ate half her lunch, she was a bit dizzy after her walk, and
+  we're nearly out of Ensure." One tool call: the handover goes on the family
+  board and to the family's phones, Ensure goes on the shared shopping list,
+  and the dizziness is flagged to Ada, who has the say over Mom's health, and
+  pinned in front of her for two days. Hearth does not judge whether it
+  matters; it makes sure the person who decides hears it today. Tom's
+  catch-up that evening includes the handover, and when Ada says "order
+  what's on the list", it is the Ensure Grace reported that gets priced, and
+  paying for it ticks it off the list.
 - **A medication rule changes only in the name of the person with the say.** When Tom says
   "Mom's warfarin is twice a day", Hearth files it as a proposal and answers
   "Ada has the say over Mom's warfarin, so it stays once a day until Ada
@@ -126,7 +136,7 @@ family's shared memory and its conscience.
 
 ### How it is built
 
-- **MCP 2025-11-25 over Streamable HTTP**, hand-rolled: 13 tools with
+- **MCP 2025-11-25 over Streamable HTTP**, hand-rolled: 15 tools with
   annotations, `structuredContent`, and an **MCP Apps** view
   (`ui://hearth/card-<hash>.html`, `text/html;profile=mcp-app`) named in
   `_meta.ui.resourceUri` on both the tool and the result.
@@ -151,8 +161,11 @@ family's shared memory and its conscience.
 - **A classic Alexa skill that is an MCP client of Hearth** (`skill/`, ASK SDK
   for Python): Alexa's NLU picks the intent, the skill makes the `tools/call`
   over Streamable HTTP, says Hearth's text verbatim, and draws Hearth's card in
-  APL on an Echo Show. Tested locally against a running Hearth for all nine
-  scenes; `skill/README.md` has the deployment steps.
+  APL on an Echo Show. Its MCP client is standard-library only, because
+  Alexa-hosted skills run Python 3.8 and the official MCP SDK needs 3.10
+  (friction log entry 12). Its tests drive the real handler against a running
+  Hearth, on Python 3.8 as well as 3.12; `docs/ALEXA_TEST.md` has the steps
+  for the developer console's simulator.
 - **Tests**: Hearth's own suite (conformance tests written from the Alexa+
   requirements as documented, the care household, the record, resolution,
   phrasing, extraction, the listing, the simulator), an interop test in which
@@ -169,13 +182,17 @@ every screen, at `/alexa`. It is a real MCP client: it authorises with PKCE,
 opens an MCP session per device (kitchen Echo Show, Tom's Echo Dot, Ada's
 Alexa app), lists tools, reads Hearth's MCP App and hosts it the way an Echo
 Show would, calls tools over Streamable HTTP, and plays the host's part in
-checkout. The MCP traffic can be shown live beside the conversation. A language model
-on Amazon Bedrock (Converse API, any OpenAI-compatible endpoint as a fallback)
-stands in for Alexa's: it is given Hearth's real `tools/list` and Hearth's Agent
-Skill, and chooses every tool call; the header names the model. Two things never
-depend on its reading, and the header says when either steps in: a question
-never records a dose, and a dose being taken always reaches `give_dose`. With no
-model configured, offline rules plan instead, and the header says so. **Every word Alexa says is the text Hearth
+checkout. The MCP traffic can be shown live beside the conversation. A language
+model stands in for Alexa's: it is given Hearth's real `tools/list` and Hearth's
+Agent Skill, and chooses every tool call; the header names the model. In the
+video it is a small open model on the laptop (Qwen2.5-VL 7B through Ollama),
+which planned every filmed line correctly in one to three seconds; Amazon
+Bedrock (Converse API) or any OpenAI-compatible endpoint is one setting away.
+A small model is enough because the safety is in the server. Three things
+never depend on the model's reading, and the header says when any steps in: a
+question never records a dose, a dose being taken always reaches `give_dose`,
+and an appointment stays on the weekday the person said. The public deployment
+has no model key, so there the offline rules plan, and the header says so. **Every word Alexa says is the text Hearth
 returned**, except the order confirmation after "yes", which is the host's own
 line built from the completed checkout session.
 
@@ -192,6 +209,27 @@ model naming the speaker. After that, pharmacy and ride partners through the
 same UCP and tool surfaces, and the signed checkpoint pushed to each family
 member's phone every day, so that every entry before it is covered by a copy
 the operator does not hold.
+
+## Testing instructions (for judges)
+
+No account or credentials are needed.
+
+1. Open https://hearth-sh3u.onrender.com/alexa (the first load can take up to
+   a minute if the free instance was asleep). The page signs itself in with
+   OAuth 2.1 + PKCE, opens an MCP session per simulated device, and shows the
+   MCP traffic on the right.
+2. Press **→** to play the scenes in order, or pick a person (Rose, Grace,
+   Tom, Ada) and type, for example "I'm just going to take my blood thinner"
+   as Rose. Every Alexa line is Hearth's own answer.
+3. On this public deployment the planner is the offline rules (the header
+   says so), because no model key is kept on the server. To run it with a
+   model: `pip install -r requirements.txt`, set
+   `HEARTH_SIM_LLM_BASE_URL`, `HEARTH_SIM_LLM_API_KEY` and
+   `HEARTH_SIM_LLM_MODEL` for any OpenAI-compatible endpoint (or
+   `HEARTH_BEDROCK_MODEL` and AWS credentials for Bedrock), then
+   `uvicorn hearth.app:app --port 8000` and open `http://localhost:8000/alexa`.
+4. Any MCP client can use `https://hearth-sh3u.onrender.com/mcp` after the
+   OAuth flow; `/console` is the household's operator view.
 
 ## Open Source mini challenge
 
@@ -225,9 +263,9 @@ the operator does not hold.
 `mcp` (spec 2025-11-25, Streamable HTTP) · `mcp-apps` · `universal-commerce-protocol`
 · `oauth2.1-pkce` · `agent-skills` · `alexa-plus` (simulated) · `alexa-skills-kit`
 (classic skill, `ask-sdk-core`, APL) · `python` · `fastapi` · `uvicorn` ·
-`amazon-bedrock` (Converse API, the planner) · `ed25519` (signed record
+`ollama` + `qwen2.5-vl` (the planner in the video, on the laptop) ·
+`amazon-bedrock` (Converse API, optional planner) · `ed25519` (signed record
 checkpoints) · `ntfy` (phone push) · `piper-tts` · `amazon-polly` (optional) ·
-`llama.cpp` (optional local planner) ·
 `playwright` (rehearsal) · `@modelcontextprotocol/conformance` (CI)
 
 ## Links
@@ -236,7 +274,7 @@ checkpoints) · `ntfy` (phone push) · `piper-tts` · `amazon-polly` (optional) 
 - Live MCP endpoint: https://hearth-sh3u.onrender.com/mcp (simulated client at
   https://hearth-sh3u.onrender.com/alexa)
 - Video: (YouTube/Vimeo URL)
-- Audio of the scenes, for judges who prefer it: `demo/hold-on-rose.m4a`
+- Transcript of the filmed afternoon: `demo/transcript.md`
 
 ---
 
@@ -262,7 +300,8 @@ reproduction steps, severity, workaround and suggestion for each.
   An **Amazon Polly** neural path is wired for when AWS keys are set; its
   request signing is unit-tested but it has not been run against AWS.
 - **Alexa Skills Kit** (`ask-sdk-core`, APL) for the classic skill in
-  `skill/`, tested locally against Hearth; not yet deployed.
+  `skill/`, tested locally against Hearth on Python 3.8, the Alexa-hosted
+  runtime.
 - We could **not** use the `alexa-ai` CLI, the MCP Toolkit, the local inspector
   or the Web Simulator: all four are partner-only (friction log entry 5).
 

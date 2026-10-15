@@ -10,8 +10,7 @@ An Alexa+ add-on, built as a self-hosted MCP server.**
 
 ![The simulated Alexa+ kitchen Echo Show stopping a second warfarin, with the live MCP traffic beside it](docs/img/hold-on-rose.jpg)
 
-[Listen to the whole household (2 min)](demo/hold-on-rose.m4a) ·
-[transcript](demo/transcript.md). Every Alexa line is Hearth's real answer,
+[Transcript of the filmed afternoon](demo/transcript.md). Every Alexa line is Hearth's real answer,
 except the order confirmation after "Yes, go ahead", which is the host's (the
 part Alexa+ plays in checkout), built from the completed checkout session.
 
@@ -45,6 +44,7 @@ why.
 |---|---|
 | **Stops the second dose** | `give_dose` checks the family's rule (once a day, set by Ada, who holds the health care proxy) against today's record (given 9:10, by Grace) and refuses. In code, on the server: once the assistant reports the dose, nothing the model says can turn the refusal into a yes. "Warfarin sodium", "Jantoven 5 mg" and "her Coumadin" all reach the same rule, and a medicine with no rule gets "check with Ada", never "logged". |
 | **Sorts it out in one request** | "Mom's cardiology moved to Thursday at ten, sort it out." Calendar moved, Tom assigned because the family rota says he does Thursdays, Tuesday's ride cancelled, a new ride booked for 9:15, a note left for Tom and Grace on the family board and pushed to Tom's phone, and a dose that falls during the trip called out. Five steps in one tool call, every step on the record. Calendar, rota and board are Hearth's own books; the ride provider is a sandbox; the phone push is real (ntfy or any webhook, `HEARTH_NOTIFY_<NAME>`). |
+| **Carries the carer's handover** | Grace, at the end of her shift: "I'm off. Mom ate half her lunch, she was a bit dizzy after her walk, and we're nearly out of Ensure." One tool call: the handover goes on the family board and to phones, Ensure goes on the family's shared shopping list, and the dizziness is flagged to Ada, who has the say over Mom's health, pinned in front of her for two days. Hearth does not judge whether it matters; it makes sure the person who decides hears it today. "Order what's on the list" later buys that Ensure, and paying ticks it off. |
 | **Remembers across sessions and devices** | Tom, on his own (simulated) Echo Dot that evening: "What did I miss with Mom?" Hearth knows when he last talked to the house and tells him only what changed since, including the dose it stopped. |
 | **Settles disagreements, and says how** | Tom says Mom can have coffee till six; Ada said three because it keeps her up. "Mom's coffee stops at three. Tom said six, but Ada has the say over what she eats and drinks." A medication rule from someone without the say is only a proposal: "Ada has the say over Mom's warfarin, so it stays once a day until Ada confirms." |
 | **Lets situations end** | "No wine while she's on the antibiotics" holds until "Mom finished the antibiotics", then stops applying by itself. |
@@ -69,7 +69,7 @@ why.
                                                     * sandbox providers
 ```
 
-- **MCP spec 2025-11-25 over Streamable HTTP**, hand-rolled, 13 tools with
+- **MCP spec 2025-11-25 over Streamable HTTP**, hand-rolled, 15 tools with
   annotations, `structuredContent` on every visual result, and an
   [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) view named in
   `_meta.ui.resourceUri` on both the tool and the result (the Alexa+ docs read
@@ -109,13 +109,18 @@ is available to select partners only, so it is not open to hackathon
 entrants. `/alexa` is a real MCP client standing in for it: it authorises with
 PKCE, opens an MCP session per device, lists tools, reads Hearth's MCP App and
 hosts it the way an Echo Show would, and calls tools over Streamable HTTP. What
-it cannot be is Alexa's language model. A language model
-on Amazon Bedrock (Converse API, any OpenAI-compatible endpoint as a fallback)
-stands in for Alexa's: it is given Hearth's real `tools/list` and Hearth's Agent
-Skill, and chooses every tool call; the header names the model. Two things never
-depend on its reading, and the header says when either steps in: a question
-never records a dose, and a dose being taken always reaches `give_dose`. With no
-model configured, offline rules plan instead, and the header says so. Every word the
+it cannot be is Alexa's language model. A language model stands in for Alexa's:
+it is given Hearth's real `tools/list` and Hearth's Agent Skill, and chooses
+every tool call; the header names the model. Any OpenAI-compatible endpoint
+works, including a small open model on the same laptop (the video uses
+Qwen2.5-VL 7B through Ollama: right on every filmed line, one to three seconds
+each; a model without a tool-calling API is asked for JSON instead), or Amazon
+Bedrock through the Converse API. Three things never depend on the model's
+reading, and the header says when any steps in: a question never records a
+dose, a dose being taken always reaches `give_dose`, and an appointment stays
+on the weekday the person said. With no model configured, offline rules plan
+instead, and the header says so; the public deployment runs that way, with no
+model key on the server. Every word the
 assistant says is the text Hearth returned, apart from the host's own checkout
 confirmation. `?film=1` is the full-width view used for the video.
 
@@ -136,8 +141,10 @@ for Python) whose handler is an MCP client of Hearth: Alexa's NLU picks the
 intent, the skill makes the Hearth `tools/call` over Streamable HTTP, says
 Hearth's text verbatim and draws Hearth's card in APL on an Echo Show.
 `skill/tests/test_skill.py` drives the real handler against a running Hearth
-for all nine scenes. It has not been deployed to Amazon yet; `skill/README.md`
-has the steps.
+for the demo scenes and a carer's handover, on Python 3.8 (what Alexa-hosted
+skills run) as well as 3.12. It has not been deployed to Amazon yet;
+[`docs/ALEXA_TEST.md`](docs/ALEXA_TEST.md) has the steps for the developer
+console's simulator and what Hearth should answer.
 
 To reach it from Alexa+ once the toolkit is available to you:
 
@@ -153,13 +160,14 @@ for t in tests/test_*.py; do [ "$t" = tests/test_live.py ] || python3 $t; done
 python3 tests/test_live.py https://<deployment>    # the same checks over the network
 ```
 
-204 tests, all green: 68 conformance (the Alexa+ requirements as documented,
-plus the MCP 2025-11-25 transport rules), 37 care and record (truncation,
-edit-and-rehash, reorder and deletion of the record all caught), 8 dose
-safety (questions never log a dose), 3 phone notification, 23 contest
-resolution, 18 phrasing, 17 extraction, 9 listing, 12 simulator (including the
-Bedrock planner against a fake Converse endpoint), 8 for the
-classic Alexa skill (`python3 skill/tests/test_skill.py`), and one interop test
+215 tests, all green: 68 conformance (the Alexa+ requirements as documented,
+plus the MCP 2025-11-25 transport rules), 42 care and record (the handover and
+shared list; truncation, edit-and-rehash, reorder and deletion of the record
+all caught), 8 dose safety (questions never log a dose), 4 phone notification,
+23 contest resolution, 18 phrasing, 17 extraction, 9 listing, 16 simulator
+(including the Bedrock planner against a fake Converse endpoint and a model
+with no tool API), 9 for the classic Alexa skill
+(`python3 skill/tests/test_skill.py`), and one interop test
 in which the **official MCP Python SDK client** (`pip install -r
 requirements-dev.txt`) negotiates 2025-11-25 with Hearth over a real socket,
 lists the tools, gets the refused dose with its card, and closes its session.
@@ -180,15 +188,17 @@ mutation-score report.
   client's MCP traffic, and the push to a family member's phone when a channel
   is configured.
 - Hearth's own books, not outside services: the calendar, the rota, the dose
-  book and the family board live in Hearth's process and data files.
+  book, the shopping list and the family board live in Hearth's process and
+  data files.
 - Sandbox: the ride provider and the pharmacy. Nothing books a car or charges a
   card. Both are named "sandbox" wherever they appear.
 - Simulated: Alexa+ itself (see above). The classic Alexa skill in `skill/`
   is real Alexa, but it is a classic custom skill, not an Alexa+ add-on, and it
   has been tested locally only so far.
-- The planner: a model on Bedrock (or any OpenAI-compatible endpoint) when one
-  is configured, with a guard that keeps questions from logging doses and dose
-  reports from being missed; offline rules otherwise.
+- The planner: a model when one is configured (a local one through Ollama, any
+  OpenAI-compatible endpoint, or Bedrock), with guards that keep questions from
+  logging doses, dose reports from being missed and appointments on the day
+  said; offline rules otherwise.
   `docs/LOCAL_PLANNER.md` measures a 3B model on CPU as the planner (right tool
   every time, 3–9 s a line: not fast enough for camera).
 - Not a medical device. Hearth enforces the rules the family gives it; it does
@@ -201,7 +211,8 @@ mutation-score report.
 ## More
 
 - [docs/SUBMISSION.md](docs/SUBMISSION.md) — the Devpost copy
-- [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) — the video, second by second
+- [docs/video/SCRIPT.md](docs/video/SCRIPT.md) — the video, second by second, and [SHOTS.md](docs/video/SHOTS.md), how it is filmed and cut (`demo/film.py`, `demo/rough_cut.py`)
+- [docs/ALEXA_TEST.md](docs/ALEXA_TEST.md) — what an entrant can run on Amazon's own surfaces, and how
 - [docs/FRICTION_LOG.md](docs/FRICTION_LOG.md) — building for Alexa+, honestly
 - [docs/ENGINEERING.md](docs/ENGINEERING.md) — latency, the record, the bugs that shaped it
 - [skills/hearth-care/SKILL.md](skills/hearth-care/SKILL.md) — an Agent Skill that teaches any agent to use Hearth safely

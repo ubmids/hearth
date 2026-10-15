@@ -1,6 +1,6 @@
 # Demo video: "Hold on, Rose"
 
-**Target 2:50, hard limit 3:00. The hero lands at 0:04.**
+**Target 2:50, hard limit 3:00. The refusal is heard from 0:07 (0:05 with a real voice for Rose) and is over by 0:15.**
 
 The video is built by two scripts, so most of it is already rendered and only
 the human parts need a person:
@@ -25,14 +25,16 @@ Alexa's voice stays synthetic on purpose: it is the assistant.
 
 ## Second by second
 
-Times are from take 1 (15 Oct, rules planner) with the shorter catch-up. A
-model planner adds about 1 to 2 s per scene while it plans.
+Times are from take 4 (15 Oct, Qwen2.5-VL 7B planning on the laptop,
+placeholder voices). Real voices are usually quicker than the placeholders,
+which is where the margin under 3:00 comes from. The take 4 cut with every
+placeholder in is 2:59.7: `rough_cut.py` prints the real total each time.
 
 | time | what | sound | lower third | who |
 |---|---|---|---|---|
-| **0:00 to 0:04** | Kitchen Echo Show, simulated, full screen. Rose's line types into the box as she says it. | **Rose:** "Alexa, I'm just going to take my blood thinner." | *Simulated Alexa+ · Hearth, an Alexa+ add-on on MCP 2025-11-25* | [PRE] [VOICE: Rose, an older woman] |
-| **0:04 to 0:12** | The card turns red: **Already taken today**. Grace gave it at 9:10. Ada's rule: once a day. | **Alexa:** "Hold on, Rose. Grace gave you today's warfarin at 9:10 this morning. Your warfarin is once a day, so not another until tomorrow." | | [PRE] |
-| 0:13 to 0:20 | The MCP traffic panel slides in on `tools/call give_dose`, then out. The only time it is on screen. | **Narrator:** "Over MCP, a model chose give dose. Hearth's server refused it, and signed the refusal into the record." | *MCP traffic, live · The server refused it, not the model* | [PRE] [VOICE: Subomi narrates] |
+| **0:00 to 0:06** | Kitchen Echo Show, simulated, full screen. Rose's line types into the box as she says it. | **Rose:** "Alexa, I'm just going to take my blood thinner." | *Simulated Alexa+ · Hearth, an Alexa+ add-on on MCP 2025-11-25* | [PRE] [VOICE: Rose, an older woman] |
+| **0:07 to 0:15** | The card turns red: **Already taken today**. Grace gave it at 9:10. Ada's rule: once a day. | **Alexa:** "Hold on, Rose. Grace gave you today's warfarin at 9:10 this morning. Your warfarin is once a day, so not another until tomorrow." | | [PRE] |
+| 0:15 to 0:21 | The MCP traffic panel slides in on `tools/call give_dose`, then out. The only time it is on screen. | **Narrator:** "Over MCP, a model chose give dose. Hearth's server refused it, and signed the refusal into the record." | *MCP traffic, live · The server refused it, not the model* | [PRE] [VOICE: Subomi narrates] |
 | 0:20 to 0:34 | **A real person, to camera.** Kitchen or desk, natural light, phone on a stand, head and shoulders. | Subomi, in his own words. If no truer story: "I built Hearth for families splitting the care of a parent: a daughter with the doctor's letters, a son two states away, an aide on weekday mornings. Nobody holds the whole picture. That gap is where doses get doubled." | *63M family caregivers (AARP 2025) · warfarin: 1 in 3 overdose hospitalisations of older adults (NEJM 2011)*, added in the edit | [ON CAMERA: Subomi] (a real carer saying one true sentence is even better) |
 | 0:34 to 0:55 | Kitchen Echo Show. Grace's card: **Grace's shift, handed over**, three ticks: shopping list, flagged, family board. | **Grace:** "Alexa, I'm off. Mom ate half her lunch, she was a bit dizzy after her walk, and we're nearly out of Ensure." **Alexa:** "Thanks, Grace. I've left the handover for Ada and Tom on the family board, put Ensure on the shopping list, and flagged one thing for Ada: she was a bit dizzy after her walk. Sent to Ada's and Tom's phones." | *One sentence · The handover, the shopping list, and a flag to the person with the say over Mom's health* | [PRE] [VOICE: Grace] |
 | 0:55 to 0:58 | **A real phone on a table buzzes**: the ntfy notification "Hearth: from Grace. Grace flagged at handover: she was a bit dizzy after her walk." | the buzz | *A real push to Ada's phone* | [SUBOMI: phone] |
@@ -54,7 +56,7 @@ handover, the order, or the Amazon console shot.
 
 ## Why it is built this way
 
-- **The hero lands at 0:04.** Amazon's advice: "Treat your video like a pitch,
+- **The hero lands inside 10 seconds.** Amazon's advice: "Treat your video like a pitch,
   not a tutorial." The first thing a judge sees is a second blood thinner
   being stopped.
 - **MCP traffic in the first 20 seconds, once.** Required tech "impossible to
