@@ -243,23 +243,32 @@
       </div>
       <div class="lf"><span class="t">${esc(c.footer || "")}</span>${rec}</div>`;
     fit();
+    const flow = document.body.classList.contains("flow");
     const b = document.getElementById("cta");
     if (b) b.onclick = () => request("ui/message", {
       role: "user", content: {type: "text", text: c.cta.message},
       _meta: {checkout: c.cta.checkout}});
     notify("ui/notifications/size-changed",
-           {width: document.body.scrollWidth, height: document.body.scrollHeight});
+           {width: document.body.scrollWidth,
+            height: flow ? Math.ceil(root.getBoundingClientRect().height) : document.body.scrollHeight});
   }
 
   // A label never clips a row in half: rows that do not fit are counted
-  // instead, and the count says where the rest are.
+  // instead, and the count says where the rest are. On the canvas the rows
+  // must fit the label; on a phone the label grows, up to the height the host
+  // can show without scrolling it out of sight (hostContext.maxHeight).
+  let maxH = 0;
   function fit() {
     const ul = root.querySelector(".rows");
-    if (!ul || document.body.classList.contains("flow")) return;
-    const over = () => ul.scrollHeight > ul.clientHeight + 1;
+    const flow = document.body.classList.contains("flow");
+    if (!ul || (flow && !(maxH > 0))) return;
+    const over = flow ? () => root.getBoundingClientRect().height > maxH + 1
+                      : () => ul.scrollHeight > ul.clientHeight + 1;
     if (over()) root.classList.add("tight");
     let hidden = 0, m = null;
-    while (ul.children.length > 1 && over()) {
+    // The canvas keeps one row at least; a phone too narrow for even one
+    // keeps none, and the count says all of them are a question away.
+    while (ul.children.length > (flow ? 0 : 1) && over()) {
       ul.removeChild(ul.lastElementChild); hidden++;
       if (!m) { m = document.createElement("div"); m.className = "more"; ul.after(m); }
       m.textContent = `${hidden} more ${hidden === 1 ? "line" : "lines"}: ask Hearth to read them`;
@@ -271,12 +280,14 @@
     if (!m || m.jsonrpc !== "2.0") return;
     if (m.id && pending[m.id]) { pending[m.id](m.result); delete pending[m.id]; return; }
     if (m.method === "ui/notifications/tool-result") render(m.params);
-    if (m.method === "ui/notifications/host-context-changed") theme(m.params);
+    if (m.method === "ui/notifications/host-context-changed") { theme(m.params); if (last) render(last); }
   });
 
   function theme(ctx) {
     if (!ctx) return;
     if (ctx.theme) document.body.classList.toggle("dark", ctx.theme === "dark");
+    const dims = ctx.containerDimensions || {};
+    if (ctx.maxHeight || dims.maxHeight) maxH = ctx.maxHeight || dims.maxHeight;
     // A phone host lets the card take the height it needs.
     if (ctx.displayMode === "flow" || ctx.deviceClass === "phone") document.body.classList.add("flow");
     // An Echo Show keeps the 768x480 canvas, scaled, however small it is drawn.

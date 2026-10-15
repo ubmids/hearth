@@ -43,7 +43,7 @@ VOICES = {"Alexa": "Samantha", "Rose": "Grandma", "Grace": "Flo",
           "Ada": "Sandy", "Tom": "Reed"}
 RATE = {"Alexa": 195, "Rose": 165}           # words a minute; others default
 HOLD_AFTER = 0.5                             # seconds of quiet after each answer
-BEAT = 0.8                                   # and before each person speaks
+BEAT = 0.6                                   # and before each person speaks
 TRAFFIC_SECONDS = 5.5                        # the MCP traffic panel, once, after the hero
 
 
@@ -135,6 +135,11 @@ async def main(base: str, out: str, voices: str | None = None):
                 timeout=60000)
             await page.wait_for_timeout(250)                     # the card settles
             answer = await last_alexa(page)
+            # DESIGN.md rule 4: a card never runs off the phone's screen.
+            clipped = await page.evaluate("""() => { const f = document.getElementById('feed');
+                return f ? f.scrollHeight - f.clientHeight : 0; }""")
+            if clipped > 1:
+                print(f"REDO: scene {n}'s card runs {clipped} px off the phone (tests/test_cards_fit.py)")
             planned = await page.evaluate(
                 "document.body.innerText.match(/planner: [^\\n]+/)?.[0] || ''")
             reply_at = max(at(), start + dur + 0.3)              # never over the person

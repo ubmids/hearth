@@ -429,6 +429,18 @@ function showResult(result) {
   pendingResult = result;
   if (frameReady) deliver();
 }
+// How tall a card can be on the phone and still be read whole: the feed
+// under the app bar, less its bottom padding. The card counts what does not fit.
+function phoneRoom() {
+  const feed = document.getElementById("feed");
+  const h = feed ? feed.clientHeight - 12 : 0;
+  return h >= 240 ? {maxHeight: h} : {};
+}
+window.addEventListener("resize", () => {
+  if (frame && frameReady && device === "phone")
+    frame.contentWindow.postMessage({jsonrpc: "2.0", method: "ui/notifications/host-context-changed",
+      params: {displayMode: "flow", deviceClass: "phone", ...phoneRoom()}}, "*");
+});
 function deliver() {
   if (!frame || !pendingResult) return;
   frame.contentWindow.postMessage({jsonrpc: "2.0", method: "ui/notifications/tool-result", params: pendingResult}, "*");
@@ -442,7 +454,8 @@ window.addEventListener("message", async ev => {
     frame.contentWindow.postMessage({jsonrpc: "2.0", id: m.id, result: {
       protocolVersion: "2026-01-26", hostInfo: {name: "simulated-alexa-plus", version: "1.0"},
       hostCapabilities: {}, hostContext: device === "phone"
-        ? {theme: "light", displayMode: "flow", deviceClass: "phone", platform: "simulated"}
+        ? {theme: "light", displayMode: "flow", deviceClass: "phone", platform: "simulated",
+           ...phoneRoom()}
         : {theme: "light", displayMode: "inline", deviceClass: "echo-show-8",
            maxWidth: 768, maxHeight: 480, platform: "simulated"}}}, "*");
   } else if (m.method === "ui/notifications/size-changed") {
