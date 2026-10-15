@@ -225,7 +225,8 @@ def test_this_is_tom_changes_who_is_speaking_for_the_session():
 def test_a_lost_session_is_reopened_without_the_user_noticing():
     t = say("CheckDoseIntent", {"medication": "warfarin"},
             attrs={"mcp_session": "0" * 32})
-    assert t.speech.startswith("Yes. Grace gave Mom warfarin"), t.speech
+    # Rose is asking about herself, so Hearth answers her directly.
+    assert t.speech.startswith("Not now, Rose. Grace gave you today's warfarin"), t.speech
     assert t.attrs["mcp_session"] != "0" * 32
     print("PASS a session Hearth no longer knows is reopened")
 
