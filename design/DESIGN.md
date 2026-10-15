@@ -243,8 +243,10 @@ Screens:
 - `card.html` (MCP App, Card and List patterns, Pay button) and its twin
   `skill/lambda/apl.py` (APL): the same layout, the same tokens.
 - `/privacy`, `/terms` (`_page` in `hearth/app.py`).
-- Skill icon (`assets/src/icon.svg` and PNGs) and carousel
-  (`assets/src/carousel.svg`, still the thermostat story: rewrite).
+- Skill icon (`assets/src/icon.svg`) and carousel (`assets/src/carousel.html`),
+  rendered to `hearth/web/assets/` by `assets/src/render.py`.
+- Devpost thumbnail and gallery, README hero: `docs/img/`, made from the real
+  scenes by `demo/gallery.py`.
 
 Components: medicine label; household label; stickers (red, yellow, blue,
 green, outlined); row mark; list row; person (initial, name, role, "has the

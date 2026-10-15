@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- The skill listing's carousel image, 600x900, rendered by
+     assets/src/render.py to hearth/web/assets/carousel-1.png. -->
+<html lang="en"><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{--desk:#ECECE7;--paper:#FFFFFF;--rule:#111111;--ink:#0B0B0B;--ink-2:#3A3A3A;--ink-3:#595954;
+        --red:#C8201A;--on-red:#FFFFFF;--yellow:#FFD43B;--on-yellow:#0B0B0B;--blue:#1F4FB5;--on-blue:#FFFFFF;--green:#006B47}
+  *{box-sizing:border-box}
+  html,body{margin:0;width:600px;height:900px;background:var(--desk);color:var(--ink);font-family:"IBM Plex Sans Condensed",sans-serif}
+  .wrap{padding:40px 36px;display:flex;flex-direction:column;gap:24px;height:100%}
+  .caps{text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .label{background:var(--paper);border:4px solid var(--rule)}
+  .lh{display:flex;justify-content:space-between;padding:10px 16px;font-size:16px;border-bottom:4px solid var(--rule)}
+  .med .lh{background:var(--rule);color:var(--paper)}
+  h1{margin:0;padding:20px 16px 0;font-size:76px;line-height:1;font-weight:700}
+  .stk{display:inline-block;font-size:17px;padding:8px 10px;line-height:1}
+  .red{background:var(--red);color:var(--on-red)} .blue{background:var(--blue);color:var(--on-blue)}
+  .yel{background:var(--yellow);color:var(--on-yellow)}
+  .s{margin:16px 16px 0}
+  table{border-collapse:collapse;width:100%;margin-top:20px;font-size:26px}
+  td{border-top:3px solid var(--rule);padding:10px 16px}
+  td:first-child{width:30%;font-size:15px}
+  .mono{font-family:"IBM Plex Mono",monospace;font-weight:600}
+  .lf{border-top:3px solid var(--rule);padding:8px 16px;font-size:15px;color:var(--ink-3)}
+  .lb{padding:16px 16px 20px;font-size:25px;line-height:1.35}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:40px;margin-top:auto}
+  .brand svg{width:40px;height:40px}
+  .tag{font-size:24px;color:var(--ink-2);line-height:1.3;margin-top:auto}
+</style>
+<body><div class="wrap">
+  <div class="brand" style="margin:0"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 27V14a9 9 0 0 1 18 0v13" fill="none" stroke="currentColor" stroke-width="3.2"/><path d="M4 27.5h24" stroke="currentColor" stroke-width="3.2"/><rect x="13" y="18" width="6" height="9" fill="currentColor"/></svg>hearth</div>
+  <div class="label med">
+    <div class="lh caps"><span>Hearth · for Mom</span><span>Warfarin</span></div>
+    <h1>Hold on, Rose.</h1>
+    <div class="s"><span class="stk caps red">Stopped</span></div>
+    <table><tr><td class="caps">Given</td><td><span class="mono">9:10 am</span> by Grace</td></tr>
+           <tr><td><span class="stk caps yel">Rule · Ada</span></td><td>Once a day</td></tr></table>
+    <div class="lf">Second dose stopped by Hearth and recorded</div>
+  </div>
+  <div class="label">
+    <div class="lh caps"><span>Hearth · household</span><span>For Tom</span></div>
+    <div class="lb"><span class="stk caps blue">For the family</span><br><br>Grace handed over: Mom ate half her lunch, she was a bit dizzy after her walk. Flagged for Ada.</div>
+  </div>
+  <div class="tag">The memory and the conscience of a family caring for someone. An Alexa+ add-on.</div>
+</div></body></html>
