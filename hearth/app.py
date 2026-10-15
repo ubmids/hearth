@@ -791,15 +791,17 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
         return HTMLResponse(f"""<!doctype html><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>{title} · Hearth</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;700&display=swap" rel="stylesheet">
 <style>
- body{{margin:0;background:#14100e;color:#f2e9e1;
-      font:16px/1.65 ui-sans-serif,-apple-system,"Segoe UI",sans-serif}}
- main{{max-width:64ch;margin:0 auto;padding:56px 20px 80px}}
- h1{{font-size:27px;letter-spacing:-.02em;margin:0 0 6px}}
- h2{{font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:#6f5f54;
-     margin:34px 0 10px}}
- p,li{{color:#cbbcb0}} a{{color:#ff7a45}} strong{{color:#f2e9e1}}
- .sub{{color:#a4907f;margin:0 0 8px}}
+ body{{margin:0;background:#ECECE7;color:#0B0B0B;
+      font:18px/1.6 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}}
+ main{{max-width:64ch;margin:40px auto;padding:32px 28px 40px;background:#FFFFFF;border:3px solid #111111}}
+ h1{{font-size:34px;line-height:1.1;margin:0 0 6px}}
+ h2{{font-size:14px;letter-spacing:.06em;text-transform:uppercase;margin:30px 0 8px;
+     padding-bottom:6px;border-bottom:1.5px solid #111111}}
+ p,li{{color:#3A3A3A}} a{{color:#0B0B0B}} strong{{color:#0B0B0B}}
+ .sub{{color:#595954;margin:0 0 8px}}
+ @media (max-width:600px){{main{{margin:0;border-width:0 0 3px}}}}
 </style><main><h1>{title}</h1>{body}
 <p style="margin-top:44px"><a href="/console">Back to the console</a></p></main>""")
 

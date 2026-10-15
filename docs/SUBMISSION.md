@@ -216,8 +216,8 @@ No account or credentials are needed.
 
 1. Open https://hearth-sh3u.onrender.com/alexa (the first load can take up to
    a minute if the free instance was asleep). The page signs itself in with
-   OAuth 2.1 + PKCE, opens an MCP session per simulated device, and shows the
-   MCP traffic on the right.
+   OAuth 2.1 + PKCE and opens an MCP session per simulated device. **Under the
+   hood** (top right, or the T key) shows the live MCP traffic.
 2. Press **→** to play the scenes in order, or pick a person (Rose, Grace,
    Tom, Ada) and type, for example "I'm just going to take my blood thinner"
    as Rose. Every Alexa line is Hearth's own answer.

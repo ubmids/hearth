@@ -8,7 +8,7 @@ An Alexa+ add-on, built as a self-hosted MCP server.**
 > **Alexa:** Hold on, Rose. Grace gave you today's warfarin at 9:10 this morning.
 > Your warfarin is once a day, so not another until tomorrow.
 
-![The simulated Alexa+ kitchen Echo Show stopping a second warfarin, with the live MCP traffic beside it](docs/img/hold-on-rose.jpg)
+![The simulated Alexa+ kitchen Echo Show showing Hearth's label: Already taken today, stopped, Grace gave it at 9:10 this morning, the rule set by Ada](docs/img/hold-on-rose.jpg)
 
 [Transcript of the filmed afternoon](demo/transcript.md). Every Alexa line is Hearth's real answer,
 except the order confirmation after "Yes, go ahead", which is the host's (the
@@ -102,7 +102,7 @@ open http://localhost:8000/alexa        # the simulated Alexa+ client
 ```
 
 Press **→** to play the scenes, or pick a person and type (or press Mic in
-Chrome). The right-hand panel is the live MCP traffic.
+Chrome). **Under the hood** (or **T**) opens the live MCP traffic.
 
 **The client is a simulation, and says so on screen.** Alexa+ add-on tooling
 is available to select partners only, so it is not open to hackathon
@@ -175,7 +175,9 @@ lists the tools, gets the refused dose with its card, and closes its session.
 The Alexa+-specific checks are also packaged on their own as a pytest plugin
 and GitHub Action, [`alexa-plus-mcp-checks`](https://github.com/ubmids/alexa-plus-mcp-checks).
 `python3 demo/shots.py http://localhost:8000 shots` plays every scene on the
-simulated client in a headless browser and fails on any page error. Parts of the
+simulated client in a headless browser and fails on any page error;
+`python3 demo/gallery.py http://localhost:8000 docs/img` makes the Devpost
+thumbnail and gallery from the same scenes. Parts of the
 suite came from hand mutation testing: `oauth.py`, `household.py` and `app.py`
 were mutated one change at a time, and each surviving mutant became a test
 (marked in `tests/test_conformance.py` and `tests/test_contest.py`). There is no
