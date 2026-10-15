@@ -18,6 +18,7 @@ next scene. Every answer is whatever Hearth returned on this run.
     export HEARTH_TZ=<a zone where it is now mid-afternoon> HEARTH_ISSUER=http://localhost:8000
     export HEARTH_SIM_LLM_PROVIDER=openai HEARTH_SIM_LLM_BASE_URL=http://localhost:11434/v1
     export HEARTH_SIM_LLM_API_KEY=ollama HEARTH_SIM_LLM_MODEL=qwen2.5:7b-instruct
+    export HEARTH_SIM_LLM_TIMEOUT=30 HEARTH_SIM_LLM_WARMUP=1   # a busy laptop: no fallback
     uvicorn hearth.app:app --port 8000 &
     python3 demo/film.py http://localhost:8000 ~/Desktop/hackathons/hearth-video/take1 \
         [--voices=~/Desktop/hackathons/hearth-video/voices]
@@ -38,12 +39,11 @@ import subprocess
 import sys
 import time
 
-from playwright.async_api import async_playwright
-
 VOICES = {"Alexa": "Samantha", "Rose": "Grandma", "Grace": "Flo",
           "Ada": "Sandy", "Tom": "Reed"}
 RATE = {"Alexa": 195, "Rose": 165}           # words a minute; others default
 HOLD_AFTER = 0.5                             # seconds of quiet after each answer
+BEAT = 0.8                                   # and before each person speaks
 TRAFFIC_SECONDS = 5.5                        # the MCP traffic panel, once, after the hero
 
 
@@ -83,11 +83,15 @@ def recorded(voices: str | None, n: int, who: str) -> str | None:
 
 
 async def main(base: str, out: str, voices: str | None = None):
+    from playwright.async_api import async_playwright   # here: rough_cut imports this file
     os.makedirs(os.path.join(out, "audio"), exist_ok=True)
     events = []
     async with async_playwright() as p:
         browser = await p.chromium.launch()
+        # The device clock is the browser's: give it Hearth's zone, so the
+        # Echo Show agrees with "3:07 this afternoon".
         ctx = await browser.new_context(viewport={"width": 1920, "height": 1080},
+                                        timezone_id=os.getenv("HEARTH_TZ") or None,
                                         device_scale_factor=1,
                                         record_video_dir=out,
                                         record_video_size={"width": 1920, "height": 1080})
@@ -100,15 +104,21 @@ async def main(base: str, out: str, voices: str | None = None):
         await page.wait_for_selector("#wiresub:has-text('Session')", timeout=30000)
         await page.wait_for_timeout(1200)
         planner = await page.evaluate("document.body.innerText.match(/planner: [^\\n]+/)?.[0] || ''")
-        events.append({"at": at(), "kind": "ready", "planner": planner})
         scenes = await page.evaluate("FILM.map(i => SCRIPT[i])")
+        # Every person's line is ready before the take starts: rendering one
+        # between scenes is dead air on screen, seconds of it on a busy machine.
+        said = []
         for n, (who, line) in enumerate(scenes):
             human = recorded(voices, n, who)
             if human:
-                dur = length(human)               # a real person's take: type to it
+                said.append((human, length(human)))   # a real person's take: type to it
             else:
                 human = os.path.join(out, "audio", f"{n:02d}a-{who.lower()}.aiff")
-                dur = speak(who, line, human)
+                said.append((human, speak(who, line, human)))
+        events.append({"at": at(), "kind": "ready", "planner": planner})
+        for n, (who, line) in enumerate(scenes):
+            human, dur = said[n]
+            await page.wait_for_timeout(int(BEAT * 1000))
             before = await page.evaluate("document.querySelectorAll('#talk .alexa').length")
             start = at()
             events.append({"at": start, "kind": "line", "who": who, "text": line,
@@ -157,6 +167,13 @@ async def main(base: str, out: str, voices: str | None = None):
         if e["kind"] == "line":
             print(f"{e['at']:7.2f}s {e['who']:5} {e['text'][:110]}")
     print(f"\n{out}/sim-run.mp4  ({planner})")
+    # A scene the model did not plan (it timed out, or a guard stepped in)
+    # is not the take to cut: SHOTS.md says redo it.
+    off = [e["scene"] for e in events if e.get("who") == "Alexa" and re.search(
+        r"offline rules|dose guard|day as said", e.get("planner", ""))]
+    if off:
+        print(f"REDO: scenes {off} were not planned by the model alone "
+              "(raise HEARTH_SIM_LLM_TIMEOUT, set HEARTH_SIM_LLM_WARMUP=1)")
 
 
 def _stamp(t: float, srt=False) -> str:

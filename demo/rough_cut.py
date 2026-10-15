@@ -91,8 +91,18 @@ def first(d: pathlib.Path, stem: str, exts) -> pathlib.Path | None:
 
 
 async def render_cards(specs: dict, out: pathlib.Path):
-    """{name: query dict} -> out/<name>.png, transparent for lower thirds."""
-    from playwright.async_api import async_playwright
+    """{name: query dict} -> out/<name>.png, transparent for lower thirds.
+    Without playwright, the cards a previous run rendered into out/ are reused,
+    so dropping in real footage needs nothing but ffmpeg."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        missing = [n for n in specs if not (out / f"{n}.png").exists()]
+        if missing:
+            raise SystemExit("playwright is needed to render the cards "
+                             f"({', '.join(missing)}): pip install -r requirements-dev.txt")
+        print(f"playwright not installed: reusing the cards in {out}")
+        return
     async with async_playwright() as p:
         b = await p.chromium.launch()
         page = await b.new_page(viewport={"width": W, "height": H})
