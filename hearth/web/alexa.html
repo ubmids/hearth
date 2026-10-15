@@ -180,18 +180,20 @@ const PEOPLE = {Rose: "kitchen", Grace: "kitchen", Tom: "dot", Ada: "phone"};
 // Every Alexa line is whatever Hearth answers; only the people are scripted.
 const SCRIPT = [
   ["Rose", "Alexa, I'm just going to take my blood thinner."],
+  ["Grace", "Alexa, I'm off. Mom ate half her lunch, she was a bit dizzy after her walk, and we're nearly out of Ensure."],
   ["Tom", "Alexa, what did I miss with Mom today?"],
   ["Tom", "Why did you stop her?"],
   ["Ada", "Alexa, Mom's cardiology moved to Thursday at 10. Sort it out."],
-  ["Grace", "Alexa, we're nearly out of her warfarin. Reorder it."],
-  ["Grace", "Yes, go ahead."],
+  ["Ada", "Alexa, order what's on the list."],
+  ["Ada", "Yes, go ahead."],
   ["Tom", "Alexa, can Mom have a coffee?"],
   ["Ada", "Mom finished the antibiotics."],
   ["Ada", "Alexa, show me the record."],
 ];
-// The scenes filmed for the video (docs/DEMO_SCRIPT.md), as indices into
-// SCRIPT: the "why" and the antibiotics are cut to keep it under three minutes.
-const FILM = [0, 1, 3, 4, 5, 6, 8];
+// The scenes filmed for the video (docs/video/SCRIPT.md), as indices into
+// SCRIPT: the "why", the coffee and the antibiotics are cut to keep it under
+// three minutes. Grace's handover feeds Tom's catch-up and Ada's order.
+const FILM = [0, 1, 2, 4, 5, 6, 9];
 // Page flags (?mute=1, ?voices=off, ?autoplay=1) survive the OAuth round trip,
 // which comes back to the bare path with only a code on it.
 const params = new URLSearchParams(location.search);

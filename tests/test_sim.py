@@ -36,7 +36,7 @@ def script():
 
 
 def test_every_scripted_line_reaches_the_tool_it_is_for():
-    expected = ["give_dose", "catch_up", "why", "arrange", "reorder",
+    expected = ["give_dose", "handover", "catch_up", "why", "arrange", "reorder",
                 "checkout.complete", "whats_true", "remember", "record"]
     lines = script()
     assert len(lines) == len(expected), lines

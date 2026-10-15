@@ -303,14 +303,14 @@ def test_every_intent_has_a_handler_and_every_slot_a_type():
 
 
 def test_every_demo_line_matches_an_intent_sample():
-    """The nine lines from the simulator's script, as Alexa would hear them,
+    """The ten lines from the simulator's script, as Alexa would hear them,
     each land on the intent the scene needs."""
     src = open(os.path.join(ROOT, "hearth", "web", "alexa.html")).read()
     block = src[src.index("const SCRIPT = ["):src.index("];", src.index("const SCRIPT = ["))]
     lines = [s for _, s in re.findall(r'\["(\w+)", "([^"]+)"\]', block)]
-    want = ["GiveDoseIntent", "CatchUpIntent", "WhyIntent", "ArrangeIntent",
-            "ReorderIntent", "AMAZON.YesIntent", "CanHaveIntent", "RememberIntent",
-            "RecordIntent"]
+    want = ["GiveDoseIntent", "HandoverIntent", "CatchUpIntent", "WhyIntent",
+            "ArrangeIntent", "OrderListIntent", "AMAZON.YesIntent", "CanHaveIntent",
+            "RememberIntent", "RecordIntent"]
     lm = model()
     for line, intent in zip(lines, want):
         heard = re.sub(r"^alexa,? ", "", line.lower())
