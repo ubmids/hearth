@@ -4,7 +4,7 @@ Makes N tools/call requests on one session against a running Hearth and prints
 the median server-side time (the Server-Timing header, not the round trip) for
 each block of calls, so growth with the size of the record is visible.
 
-    python3 scripts/trace_latency.py http://127.0.0.1:8765 5000
+    python3 scripts/trace_latency.py http://127.0.0.1:8775 5000
 
 Run Hearth with HEARTH_DATA set: the cost being measured is persistence.
 """
@@ -15,7 +15,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8765").rstrip("/")
+BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8775").rstrip("/")
 N = int(sys.argv[2]) if len(sys.argv) > 2 else 5000
 BLOCK = int(sys.argv[3]) if len(sys.argv) > 3 else 500
 

@@ -8,9 +8,9 @@ and Mcp-Session-Id pass through as the suite sent them, so the transport
 checks (DNS rebinding, version header, sessions) are exercised against Hearth
 itself, not against this proxy.
 
-    HEARTH_UPSTREAM=http://127.0.0.1:8765 \
+    HEARTH_UPSTREAM=http://127.0.0.1:8775 \
     HEARTH_CONFORMANCE_TOKEN=... \
-    uvicorn scripts.conformance_proxy:app --port 8766
+    uvicorn scripts.conformance_proxy:app --port 8776
 
 Without HEARTH_CONFORMANCE_TOKEN the token is minted from the upstream's
 loopback-only /api/console-token, which only works when Hearth is local.
@@ -23,7 +23,7 @@ from starlette.applications import Starlette
 from starlette.responses import Response
 from starlette.routing import Route
 
-UP = os.getenv("HEARTH_UPSTREAM", "http://127.0.0.1:8765").rstrip("/")
+UP = os.getenv("HEARTH_UPSTREAM", "http://127.0.0.1:8775").rstrip("/")
 _TOKEN = {"value": os.getenv("HEARTH_CONFORMANCE_TOKEN", "")}
 HOP = {"content-length", "transfer-encoding", "connection", "keep-alive"}
 

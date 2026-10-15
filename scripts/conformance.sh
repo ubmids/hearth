@@ -6,9 +6,9 @@
 #   scripts/conformance.sh --all      # every server scenario, for the full picture
 #
 # What it does:
-#   1. starts Hearth on 127.0.0.1:$HEARTH_PORT (default 8765) with a throwaway
+#   1. starts Hearth on 127.0.0.1:$HEARTH_PORT (default 8775) with a throwaway
 #      data dir, unless HEARTH_UPSTREAM points at one already running;
-#   2. starts scripts/conformance_proxy.py on 127.0.0.1:$PROXY_PORT (8766),
+#   2. starts scripts/conformance_proxy.py on 127.0.0.1:$PROXY_PORT (8776),
 #      which adds a bearer token to each request and changes nothing else
 #      (the suite has no auth option, and Hearth answers 401 without one);
 #   3. runs each scenario against http://127.0.0.1:$PROXY_PORT/mcp.
@@ -25,8 +25,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SUITE_VERSION="${CONFORMANCE_VERSION:-0.1.16}"
-HEARTH_PORT="${HEARTH_PORT:-8765}"
-PROXY_PORT="${PROXY_PORT:-8766}"
+HEARTH_PORT="${HEARTH_PORT:-8775}"
+PROXY_PORT="${PROXY_PORT:-8776}"
 PY="${PYTHON:-python3}"
 OUT="${CONFORMANCE_OUT:-conformance-results}"
 APPLICABLE=(server-initialize ping tools-list resources-list

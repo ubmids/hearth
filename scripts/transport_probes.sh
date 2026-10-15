@@ -3,11 +3,11 @@
 # as curl, against a running Hearth. Prints one line per probe: what was sent,
 # the status, and the body. Used for the before/after evidence in the report.
 #
-#   scripts/transport_probes.sh http://127.0.0.1:8765
+#   scripts/transport_probes.sh http://127.0.0.1:8775
 #
 # Needs a local Hearth (the token comes from the loopback-only console route).
 set -u
-BASE="${1:-http://127.0.0.1:8765}"
+BASE="${1:-http://127.0.0.1:8775}"
 TOK=$(curl -s "$BASE/api/console-token" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
 A=(-H "Authorization: Bearer $TOK" -H "Content-Type: application/json"
    -H "Accept: application/json, text/event-stream")

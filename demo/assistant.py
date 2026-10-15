@@ -11,8 +11,8 @@ record. At the end the script reads that record back from the server, so what
 the assistant claims it did can be checked against what the server saw.
 
 Run (needs a logged-in `claude` on PATH, or CLAUDE_BIN):
-    uvicorn hearth.app:app --port 8765 &      # HEARTH_ISSUER=http://127.0.0.1:8765
-    python3 demo/assistant.py http://127.0.0.1:8765
+    uvicorn hearth.app:app --port 8775 &      # HEARTH_ISSUER=http://127.0.0.1:8775
+    python3 demo/assistant.py http://127.0.0.1:8775
 
 Writes demo/assistant.md: each request, the tool calls the assistant made, its
 answer, and the server's record of the same calls.
@@ -112,7 +112,7 @@ def ask(claude, cfg, skill, who, said):
 
 
 def main():
-    base = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8765").rstrip("/")
+    base = (sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8775").rstrip("/")
     claude = os.getenv("CLAUDE_BIN", "claude")
     token = token_for(base)
     skill = open(os.path.join(ROOT, "skills", "hearth-care", "SKILL.md")).read()

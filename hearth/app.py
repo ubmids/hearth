@@ -108,7 +108,7 @@ def seed_care_household(h: Household, book: CareBook, now=None) -> None:
                               "where": "St. Mary's Heart Center",
                               "status": "booked", "escort": "Grace",
                               "ride": "ride_seed_tue"})
-    book.post("Mom slept well and ate all her lunch.", to=["Ada", "Tom"],
+    book.post("Mom slept well.", to=["Ada", "Tom"],
               by="Grace", now=now - 1 * DAY)
     book.save()
 

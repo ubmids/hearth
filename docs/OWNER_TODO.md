@@ -66,8 +66,8 @@ and its links in README and SUBMISSION.
 
 ### 4. Claude Code bonus
 
-`HEARTH_ISSUER=http://127.0.0.1:8765 uvicorn hearth.app:app --port 8765 &`
-then `python3 demo/assistant.py http://127.0.0.1:8765` (needs a logged-in
+`HEARTH_ISSUER=http://127.0.0.1:8775 uvicorn hearth.app:app --port 8775 &`
+then `python3 demo/assistant.py http://127.0.0.1:8775` (needs a logged-in
 `claude`). Commit `demo/assistant.md` and film 10 s of it for 2:30. If it does
 not work, delete the sentence "and `demo/assistant.py` runs Claude Code…" from
 `docs/SUBMISSION.md` and the matching paragraph in README.
