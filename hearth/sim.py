@@ -295,7 +295,8 @@ def _json_calls_prompt(tools) -> str:
     """The tool list as text, for a chat model with no tool-calling API."""
     lines = ["You have these Hearth tools. Reply with ONLY a JSON object of the "
              'form {"calls": [{"name": "<tool>", "arguments": {...}}]} and '
-             "nothing else."]
+             "nothing else. Copy days and times exactly as the person said them "
+             "(\"Thursday at 10\"); never turn them into dates."]
     for t in tools:
         props = t["inputSchema"].get("properties", {})
         need = set(t["inputSchema"].get("required", []))
