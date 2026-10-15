@@ -42,7 +42,10 @@ def hearth_url() -> str:
     data = tempfile.mkdtemp(prefix="hearth-skill-")
     env = {**os.environ, "HEARTH_SKILL_TOKEN": TOKEN, "HEARTH_TZ": TZ,
            "HEARTH_ISSUER": url, "HEARTH_DATA": os.path.join(data, "h.json")}
-    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "hearth.app:app",
+    # HEARTH_SERVER_PYTHON lets the skill run on Alexa-hosted's Python 3.8
+    # while Hearth itself runs on the 3.10+ it needs.
+    server_py = os.getenv("HEARTH_SERVER_PYTHON", sys.executable)
+    proc = subprocess.Popen([server_py, "-m", "uvicorn", "hearth.app:app",
                              "--host", "127.0.0.1", "--port", str(port),
                              "--log-level", "warning"], cwd=ROOT, env=env)
     atexit.register(proc.terminate)
@@ -135,7 +138,10 @@ def verbatim(turn: Turn, tool: str):
 
 
 def next_thursday() -> str:
-    from zoneinfo import ZoneInfo
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:                       # Python 3.8, as on Alexa-hosted
+        from backports.zoneinfo import ZoneInfo
     d = dt.datetime.now(ZoneInfo(TZ)).date()
     return (d + dt.timedelta(days=(3 - d.weekday()) % 7 or 7)).isoformat()
 
