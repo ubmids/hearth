@@ -13,6 +13,7 @@ next scene. Every answer is whatever Hearth returned on this run.
                          replaced by real people (the script says who)
   <out>/timeline.json    when each line starts in screen.webm, who said it, the text
   <out>/sim-run.mp4      the screen with every line mixed in at its time
+  <out>/transcript.md    who said what, when; captions.srt for the upload
 
     export HEARTH_TZ=<a zone where it is now mid-afternoon> HEARTH_ISSUER=http://localhost:8000
     export HEARTH_SIM_LLM_PROVIDER=openai HEARTH_SIM_LLM_BASE_URL=http://localhost:11434/v1
@@ -149,12 +150,41 @@ async def main(base: str, out: str, voices: str | None = None):
     with open(os.path.join(out, "timeline.json"), "w") as f:
         json.dump({"base": base, "events": events}, f, indent=1)
     mix(out, events)
+    write_transcript(out, events, planner)
     if errors:
         raise SystemExit(f"page errors: {errors}")
     for e in events:
         if e["kind"] == "line":
             print(f"{e['at']:7.2f}s {e['who']:5} {e['text'][:110]}")
     print(f"\n{out}/sim-run.mp4  ({planner})")
+
+
+def _stamp(t: float, srt=False) -> str:
+    m, sec = divmod(max(0.0, t), 60)
+    if srt:
+        h, m = divmod(int(m), 60)
+        return f"{h:02d}:{m:02d}:{int(sec):02d},{int((sec % 1) * 1000):03d}"
+    return f"{int(m)}:{sec:04.1f}"
+
+
+def write_transcript(out: str, events: list, planner: str):
+    """transcript.md (who said what, when) and captions.srt for the upload."""
+    lines = [e for e in events if e["kind"] == "line"]
+    t0 = next(e["at"] for e in events if e["kind"] == "ready")
+    md = ["# Hold on, Rose: the filmed afternoon", "",
+          "Recorded by `demo/film.py` on the simulated Alexa+ client "
+          f"(`/alexa?film=1`), {planner}. Every **Alexa** line is the text "
+          "Hearth's tools returned on this run, over the real MCP endpoint. "
+          "Times are from the start of the take.", ""]
+    md += [f"- `{_stamp(e['at'] - t0)}` **{e['who']}**: {e['text']}" for e in lines]
+    with open(os.path.join(out, "transcript.md"), "w") as f:
+        f.write("\n".join(md) + "\n")
+    srt = []
+    for i, e in enumerate(lines, 1):
+        srt += [str(i), f"{_stamp(e['at'], True)} --> {_stamp(e['at'] + e['seconds'], True)}",
+                f"{e['who']}: {e['text']}", ""]
+    with open(os.path.join(out, "captions.srt"), "w") as f:
+        f.write("\n".join(srt))
 
 
 def mix(out: str, events: list):

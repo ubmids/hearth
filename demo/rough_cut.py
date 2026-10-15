@@ -19,7 +19,7 @@ Inserts (real footage, any format ffmpeg reads; drop them in and run again):
   n-traffic.m4a, n-tech.m4a, n-close.m4a, n-oncam.m4a
                narration in a real voice (else: macOS `say`, voice Daniel)
 
-Writes <take>/hearth-demo.mp4 and <take>/cut.json (each segment, its source,
+Writes <take>/hearth-demo.mp4, hearth-demo.srt (captions for the upload) and <take>/cut.json (each segment, its source,
 its length, and whether it is still a placeholder). macOS only (`say`); needs
 ffmpeg and playwright.
 """
@@ -32,6 +32,7 @@ import sys
 from urllib.parse import urlencode
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 W, H, FPS = 1920, 1080, 30
 ENC = ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
        "-r", str(FPS), "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"]
@@ -185,6 +186,27 @@ class Cut:
                     "-map", a if narr else "0:a"]
         run(cmd + ENC + [str(out)])
         self.add(name, out, "sim-run.mp4", False)
+        if self.parts and self.parts[-1][1]["segment"] == name:
+            self.parts[-1][1]["take_span"] = [round(start, 3), round(end, 3)]
+
+    def captions(self, recs):
+        """hearth-demo.srt: every spoken line of the take, at its time in the cut."""
+        from film import _stamp
+        ev = json.loads((self.take / "timeline.json").read_text())["events"]
+        lines = [e for e in ev if e["kind"] == "line"]
+        out, at, n = [], 0.0, 0
+        for r in recs:
+            if "take_span" in r:
+                a, b = r["take_span"]
+                for e in lines:
+                    if a <= e["at"] < b:
+                        t = at + e["at"] - a
+                        end = min(at + r["seconds"], t + e["seconds"])
+                        n += 1
+                        out += [str(n), f"{_stamp(t, True)} --> {_stamp(end, True)}",
+                                f"{e['who']}: {e['text']}", ""]
+            at += r["seconds"]
+        (self.take / "hearth-demo.srt").write_text("\n".join(out))
 
     def finish(self) -> pathlib.Path:
         lst = self.work / "list.txt"
@@ -194,6 +216,7 @@ class Cut:
              "-i", str(lst), "-c", "copy", "-movflags", "+faststart", str(final)])
         recs = [r for _, r in self.parts]
         total = duration(final)
+        self.captions(recs)
         (self.take / "cut.json").write_text(json.dumps(
             {"total_seconds": round(total, 2), "segments": recs}, indent=1))
         return final
