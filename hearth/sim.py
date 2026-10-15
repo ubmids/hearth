@@ -117,6 +117,18 @@ def plan_rules(said: str, speaker: str, context: dict | None = None) -> list[dic
 
     if re.search(r"\b(what did i miss|catch me up|what'?s new|anything (?:new|happen)|how(?:'s| is) (?:mom|mum|she) (?:doing|been))\b", low):
         return [{"name": "catch_up", "arguments": {"person": speaker}}]
+    if re.search(r"\b(i'?m off|i am off|heading off|end of (?:my|the) shift|handover|"
+                 r"hand(?:ing)? over|that'?s me done|before i go|i'?m leaving)\b", low):
+        # Before the dose and reorder rules: a handover mentions both ("she
+        # had her warfarin", "we're out of Ensure") and is neither.
+        return [{"name": "handover", "arguments": {"note": s, "given_by": speaker}}]
+    if re.search(r"\b(shopping list|on the list|the list)\b", low):
+        if re.search(r"\b(order|buy|get)\b", low) and not re.search(r"\b(put|add)\b", low):
+            return [{"name": "reorder", "arguments": {"item": "the list", "asked_by": speaker}}]
+        m = re.search(r"\b(?:put|add)\s+(.+?)\s+(?:on|to)\s+(?:the\s+)?(?:shopping\s+)?list", low)
+        if m:
+            return [{"name": "shopping_list", "arguments": {"add": m.group(1), "asked_by": speaker}}]
+        return [{"name": "shopping_list", "arguments": {"asked_by": speaker}}]
     if re.search(r"\bwhy\b", low):
         dom = ("medication" if re.search(MEDS + r"|\bstop", low) else
                "diet" if re.search(r"coffee|wine|alcohol", low) else

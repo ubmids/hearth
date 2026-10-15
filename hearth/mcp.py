@@ -255,6 +255,45 @@ TOOLS = [
         },
     },
     {
+        "name": "handover",
+        "title": "Hand over a shift",
+        "description": ("Call when a carer ends a shift or hands over to the family: "
+                        "'I'm off, Mom ate half her lunch, she was a bit dizzy after "
+                        "her walk, and we're nearly out of Ensure.' Pass the whole "
+                        "note as said. Hearth leaves the handover on the family board "
+                        "for everyone (and their phones), puts anything running low "
+                        "on the shared shopping list, and flags anything worrying to "
+                        "the person with the say over her health. Say its answer as "
+                        "given."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "note": {"type": "string", "description": "The handover, as spoken."},
+                "given_by": {"type": "string", "description": "The carer handing over."},
+                "person": {"type": "string", "description": "Who is cared for. Optional."},
+            },
+            "required": ["note", "given_by"],
+        },
+    },
+    {
+        "name": "shopping_list",
+        "title": "The family's shopping list",
+        "description": ("Read or add to the shared shopping list every family member "
+                        "and carer uses: 'what's on the list?', 'put wipes on the "
+                        "list'. Items a carer reports running low at handover are "
+                        "already on it; reorder ticks pharmacy items off when they "
+                        "are paid for. To buy what is on it, call reorder with "
+                        "item='the list'."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "add": {"type": "string", "description": "An item to add, as said. Omit to read the list."},
+                "asked_by": {"type": "string"},
+            },
+            "required": ["asked_by"],
+        },
+    },
+    {
         "name": "catch_up",
         "title": "What did I miss",
         "description": ("Tell a family member what happened since they last asked: "
@@ -293,9 +332,10 @@ _ANNOTATE = {
     "stand_down": {**_WRITE, "destructiveHint": True}, "end_context": _WRITE,
     "household": _READ, "check_dose": _READ, "give_dose": _WRITE,
     "arrange": _WORLD, "reorder": _WORLD, "catch_up": _READ, "record": _READ,
+    "handover": _WORLD, "shopping_list": _WRITE,
 }
 _VISUAL = {"whats_true", "why", "check_dose", "give_dose", "arrange", "reorder",
-           "catch_up", "record"}
+           "catch_up", "record", "handover", "shopping_list"}
 for _t in TOOLS:
     _t["annotations"] = {"title": _t["title"], **_ANNOTATE[_t["name"]]}
     if _t["name"] in _VISUAL:
@@ -965,6 +1005,67 @@ class HearthMCP:
                       + ("; the phone push is real." if out["notified"] else ".")},
             steps=out["steps"], appointment=a["id"], told=out["told"],
             notified=out["notified"])
+
+    def _tool_handover(self, note, given_by, person=None):
+        out = self.care.handover(note, given_by, person, now=self._now)
+        giver = out["giver"]
+        told = next((s["line"] for s in out["steps"] if s["service"] == "board"), "")
+        parts = [told[:1].lower() + told[1:].rstrip(".")]
+        if out["added"]:
+            parts.append("put " + " and ".join(e["item"] for e in out["added"])
+                         + " on the shopping list")
+        if out["already"]:
+            parts.append(" and ".join(e["item"] for e in out["already"])
+                         + " was already on the shopping list")
+        if out["flagged_for"]:
+            pushed = any(n["to"] == out["flagged_for"] for n in out["notified"])
+            parts.append(f"flagged one thing for {out['flagged_for']}"
+                         + (f" and sent it to {out['flagged_for']}'s phone" if pushed else "")
+                         + ": " + "; ".join(out["concerns"]))
+        said = (", ".join(parts[:-1]) + ", and " + parts[-1]) if len(parts) > 2 else (
+            " and ".join(parts))
+        speech = f"Thanks, {giver}. I've {said}."
+        who = out["person"]
+        return _text(speech, {
+            "pattern": "list", "tone": "warn" if out["flagged_for"] else "ok",
+            "eyebrow": f"Handover from {giver}",
+            "title": f"{giver}'s shift, handed over",
+            "items": [{"label": {"list": "Shopping list", "flag": "Flagged",
+                                 "board": "Family board"}.get(s["service"], s["service"].title()),
+                       "detail": s["line"], "status": s["status"]} for s in out["steps"]],
+            "footer": f"{len(out['steps'])} steps, one sentence. Board, list and flag are "
+                      "Hearth's own" + ("; the phone push is real." if out["notified"] else ".")},
+            steps=out["steps"], told=out["told"], notified=out["notified"],
+            added=[e["item"] for e in out["added"]], flagged_for=out["flagged_for"])
+
+    def _tool_shopping_list(self, asked_by, add=None):
+        if add:
+            e, new = self.care.add_to_list(add, asked_by, now=self._now)
+            self.care.book.save()
+            self.care.ledger.record(f"added {e['item']} to the shopping list"
+                                    if new else f"found {e['item']} already on the list",
+                                    "list", by=self.care._name(asked_by), source="hearth",
+                                    at=self._now or time.time())
+            line = (f"Added {e['item']} to the shopping list." if new else
+                    f"{e['item']} is already on the list, added by {e['added_by']}.")
+        items = self.care.open_list()
+        if not add:
+            if not items:
+                line = "The shopping list is empty."
+            else:
+                said = [f"{e['item']}, from {e['added_by']}" for e in items[:6]]
+                line = (f"{len(items)} on the list: " + "; ".join(said) + "."
+                        + (" The pharmacy stocks "
+                           + " and ".join(e["item"] for e in items if e.get("sku"))
+                           + ": say 'order what's on the list' to buy it."
+                           if any(e.get("sku") for e in items) else ""))
+        return _text(line, {
+            "pattern": "list", "tone": "info", "eyebrow": "Shopping list",
+            "title": f"{len(items)} item{'s' if len(items) != 1 else ''} to get",
+            "items": [{"label": e["item"],
+                       "detail": f"Added by {e['added_by']}, {carelib.when_said(e['at'], self._now)}",
+                       "status": "done"} for e in items[:8]],
+            "footer": "Shared by the whole family"}, items=[e["item"] for e in items])
 
     def _tool_reorder(self, item, asked_by, quantity=1):
         q = self.care.reorder(item, asked_by, quantity, now=self._now)

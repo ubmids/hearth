@@ -48,6 +48,33 @@ def test_every_scripted_line_reaches_the_tool_it_is_for():
     print("PASS the script plans as intended")
 
 
+def test_a_handover_is_a_handover_even_when_it_mentions_a_dose_or_a_shortage():
+    """A carer's handover names medicines and things running out. It is not a
+    dose to log and not an order to price: it goes to handover, whole."""
+    for said in ("Alexa, I'm off. Mom ate half her lunch, she was a bit dizzy "
+                 "after her walk, and we're nearly out of Ensure.",
+                 "Handover: she had her warfarin at nine and we're out of wipes",
+                 "Before I go, she didn't eat much today"):
+        p = sim.plan_rules(said, "Grace")[0]
+        assert p == {"name": "handover", "arguments": {"note": said,
+                                                       "given_by": "Grace"}}, p
+    assert sim.plan_rules("Put wipes on the list", "Tom")[0] == {
+        "name": "shopping_list", "arguments": {"add": "wipes", "asked_by": "Tom"}}
+    assert sim.plan_rules("What's on the shopping list?", "Ada")[0] == {
+        "name": "shopping_list", "arguments": {"asked_by": "Ada"}}
+    assert sim.plan_rules("Alexa, order what's on the list.", "Ada")[0] == {
+        "name": "reorder", "arguments": {"item": "the list", "asked_by": "Ada"}}
+    print("PASS handovers and the shared list route to their own tools")
+
+
+def test_the_model_is_told_the_household_date():
+    """Without the date a model turned "Thursday at 10" into a Sunday."""
+    turn = sim._user_turn("Cardiology moved to Thursday at 10", "Ada",
+                          {"now": 1792076400.0})          # Thu 15 Oct 2026, 11:00 New York
+    assert "(It is Thursday 15 October 2026, 11:00 where the household is.)" in turn, turn
+    print("PASS the planner's turn carries the household's date")
+
+
 def test_the_rules_planner_fills_the_arguments_a_tool_needs():
     p = sim.plan_rules("Alexa, I'm just going to take my blood thinner.", "Rose")[0]
     assert p == {"name": "give_dose", "arguments": {"medication": "warfarin",

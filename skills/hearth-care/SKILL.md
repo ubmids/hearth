@@ -41,6 +41,9 @@ tool, pass along who is speaking, and say Hearth's answer faithfully.
 | "Did Mom take her warfarin?" | `check_dose(medication, asked_by)` |
 | "Cardiology moved to Thursday at ten, sort it out" | `arrange(what, when, asked_by)` — one call; Hearth does the calendar, rota, ride and family board |
 | "We're nearly out of her warfarin, reorder it" | `reorder(item, asked_by)`, then hand off to checkout (below) |
+| "I'm off. Mom ate half her lunch, she was dizzy after her walk, we're nearly out of Ensure" | `handover(note, given_by)` — one call, the whole note as said; Hearth posts it to the family, puts Ensure on the shopping list and flags the dizziness to the person with the say over her health |
+| "What's on the list?", "Put wipes on the list" | `shopping_list(asked_by, add?)` |
+| "Order what's on the list" | `reorder(item="the list", asked_by)`, then checkout as below |
 | "What did I miss?", "How's Mom been?" | `catch_up(person)` |
 | "Can Mom have a coffee?" | `whats_true(domain="diet", slot="coffee_cutoff", about="Mom")` |
 | "Why did you stop her?", "Why is Tom taking her?" | `why(domain)` |

@@ -19,6 +19,8 @@ household:
                a post is also pushed to each recipient's phone when they have
                a channel configured (hearth/notify.py, ntfy or a webhook)
   checkouts    pharmacy reorders, shaped like Alexa+'s UCP checkout sessions
+  shopping     the family's shared list; a carer's handover adds to it, and
+               an order from the pharmacy ticks its item off
 
 Calendar, rota, doses and board are Hearth's own books in this process, not
 outside services. The rides provider and the pharmacy are sandboxes, named as
@@ -204,9 +206,43 @@ def parse_when(text, now: float | None = None) -> float | None:
                     tzinfo=tz()).timestamp()
 
 
+# --- handovers -----------------------------------------------------------
+# What a carer says when something is running out: "we're nearly out of
+# Ensure", "she needs more pads", "ran out of the wipes".
+_LOW = re.compile(
+    r"\b(?:low on|nearly out of|almost out of|running (?:low on|out of)|out of|"
+    r"ran out of|run out of|needs? more|need to get(?: more)?|finished the last of)\s+"
+    r"(?:some\s+|more\s+|her\s+|his\s+|the\s+|my\s+|our\s+)*(.+)$")
+# What a carer says that the person with the say over her health should hear
+# today, not when they next ask. A routing rule, not a diagnosis: Hearth does
+# not judge whether it matters, only that the person who decides is told.
+_CONCERN = re.compile(
+    r"\b(dizz\w*|light-?headed|fell|fall(?:en)?|a fall|bleed\w*|bled|bruis\w*|"
+    r"blood in|nosebleed|confus\w*|chest pain|short of breath|breathless|"
+    r"vomit\w*|threw up|throwing up|not eating|didn't eat|wouldn't eat|"
+    r"won't eat|refused (?:her|to)|rash|swollen|swelling|faint\w*|headache|"
+    r"not herself|not himself)\b", re.I)
+
+
+def _clauses(note: str) -> list[str]:
+    """A spoken handover, split where a person would pause."""
+    parts = re.split(r"[.;!?]+\s*|,\s*(?:and\s+|but\s+)?|\s+(?:and|but|also)\s+"
+                     r"(?=(?:she|he|we|mom|mum|her|his|the|i|there)\b)",
+                     str(note), flags=re.I)
+    return [p.strip(" ,") for p in parts if p and p.strip(" ,")]
+
+
+def _item_said(text: str) -> str:
+    """'Ensure too' -> 'Ensure'; 'the pads for the night' stays as said."""
+    t = re.sub(r"\s+(?:too|as well|again|soon|now|already|today)$", "",
+               text.strip(" .,"), flags=re.I)
+    return t[:60]
+
+
 # --- the books ------------------------------------------------------------
 class CareBook:
-    KINDS = ("doses", "appointments", "rides", "board", "quotes", "checkouts")
+    KINDS = ("doses", "appointments", "rides", "board", "quotes", "checkouts",
+             "shopping")
 
     def __init__(self, store=None):
         self.store = store
@@ -475,6 +511,119 @@ class Care:
                              for d in post.get("delivered", [])],
                 "told": everyone}
 
+    # --- handovers and the shared list ------------------------------------
+    def health_holder(self, person=None):
+        """Who has the say over this person's health: the holder of the
+        medication rules (the health care proxy; in the demo, Ada)."""
+        for med in sorted(self.known_meds()):
+            m = self.say_holder(f"medication.{med}")
+            if m:
+                return m
+        return next((m for m in self.h.members.values()
+                     if any(g.startswith("medication") for g in m.grants)), None)
+
+    def add_to_list(self, item, added_by, now=None, source=None) -> tuple[dict, bool]:
+        """(the list entry, whether it is new). An item already open on the
+        list is not added twice, whoever says it."""
+        now = now or time.time()
+        said = _item_said(item)
+        key = said.lower()
+        for e in self.book.shopping:
+            if e["status"] == "open" and e["item"].lower() == key:
+                return e, False
+        stocked = next((k for k in CATALOG if k in key or key in k), None)
+        e = {"id": _id("item"), "item": said, "added_by": self._name(added_by),
+             "at": now, "status": "open", "sku": CATALOG[stocked]["id"] if stocked else None}
+        if source:
+            e["source"] = source
+        self.book.shopping.append(e)
+        return e, True
+
+    def open_list(self) -> list[dict]:
+        return [e for e in self.book.shopping if e["status"] == "open"]
+
+    def handover(self, note, given_by, person=None, now=None) -> dict:
+        """The end of a shift, in one sentence, and everything it implies.
+
+        "I'm off. Mom ate half her lunch, she was a bit dizzy after her walk,
+        and we're nearly out of Ensure." is three services: the handover goes
+        on the family board (and to phones) for the family; Ensure goes on the
+        shared shopping list; the dizziness goes, pinned, to the person with
+        the say over her health, so it is in front of them today and not only
+        when they next ask. Each step is its own action on the record.
+        """
+        now = now or time.time()
+        who = self.person(person)
+        pid = who.id if who else None
+        her = who.name if who else "them"
+        giver = self._name(given_by)
+        # "Alexa, I'm off. Mom ate..." keeps what was handed over, not the
+        # words that announced it.
+        note = re.sub(r"^(?:alexa,?\s*)?(?:(?:i'm|i am)\s+(?:off|leaving|heading off|"
+                      r"done|going)(?:\s+now|\s+for the day)?|that's me(?:\s+done)?|"
+                      r"hand\s*over|handing over)\b[\s,.:;-]*", "", str(note).strip(),
+                      flags=re.I)
+        note = note[:1].upper() + note[1:]
+        steps = []
+
+        def step(service, line, status="done"):
+            a = self.ledger.record(line[:1].lower() + line[1:].rstrip("."),
+                                   service, by=giver, source="hearth", at=now,
+                                   outcome="done" if status == "done" else status)
+            steps.append({"service": service, "line": line, "status": status,
+                          "action": a.id})
+
+        clauses = _clauses(note)
+        low, concerns = [], []
+        for c in clauses:
+            m = _LOW.search(c)
+            if m:
+                low.append(m.group(1))
+            elif _CONCERN.search(c):
+                concerns.append(c)
+
+        # 1. the shared list
+        added = []
+        for item in low:
+            e, new = self.add_to_list(item, giver, now, source="handover")
+            added.append((e, new))
+            step("list", f"Added {e['item']} to the shopping list." if new else
+                         f"{e['item']} was already on the shopping list.")
+
+        # 2. the person with the say hears the worrying part today
+        holder = self.health_holder(person)
+        flagged = None
+        if concerns and holder:
+            text = f"{giver} flagged at handover: " + "; ".join(concerns) + "."
+            flagged = self.book.post(text, to=[holder.name], by=giver, now=now,
+                                     pin_for=2 * 86400, about="handover")
+            pushed = [d["to"] for d in flagged.get("delivered", [])]
+            step("flag", f"Flagged for {holder.name}, who has the say over "
+                         f"{phrasing.possessive(her)} health: " + "; ".join(concerns)
+                         + (f". Sent to {holder.name}'s phone." if pushed else "."),
+                 status="needs_attention")
+
+        # 3. the handover itself, for the family
+        family = [m.name for m in self.h.members.values()
+                  if m.id != pid and m.name != giver]
+        post = self.book.post(f"{giver} handed over: {note.rstrip('.')}.",
+                              to=family, by=giver, now=now, about="handover")
+        names = (", ".join(family[:-1]) + " and " + family[-1] if len(family) > 1
+                 else (family[0] if family else "nobody"))
+        pushed = [d["to"] for d in post.get("delivered", [])]
+        line = f"Left the handover for {names} on the family board"
+        if pushed:
+            line += " and sent it to " + " and ".join(f"{n}'s phone" for n in pushed)
+        step("board", line + ".")
+        self.book.save()
+        return {"steps": steps, "person": who, "giver": giver, "told": family,
+                "added": [e for e, new in added if new],
+                "already": [e for e, new in added if not new],
+                "concerns": concerns, "flagged_for": holder.name if flagged else None,
+                "notified": [{"to": d["to"], "via": d["via"]}
+                             for d in post.get("delivered", [])
+                             + (flagged.get("delivered", []) if flagged else [])]}
+
     # --- the pharmacy: a quote here, a checkout there, never a silent charge --
     #
     # The Alexa+ payments model, followed as documented: the add-on's tool
@@ -536,6 +685,12 @@ class Care:
         asked, which is what decides whether it may go over the limit.
         """
         now = now or time.time()
+        if re.search(r"\b(?:the|shopping) list\b|on the list", str(item).lower()):
+            stocked = [e for e in self.open_list() if e.get("sku")]
+            if not stocked:
+                raise ValueError("nothing on the shopping list is stocked by the "
+                                 "sandbox pharmacy")
+            item = stocked[0]["sku"]
         entry = self._sku(item)
         who = self.person(person)
         asker = self._name(asked_by)
@@ -647,6 +802,10 @@ class Care:
             s["idempotency"][idempotency_key] = s["order_id"]
         title = s["line_items"][0]["item"]["title"]
         total = next(t["amount"] for t in s["totals"] if t["type"] == "total")
+        ordered = {li["item"]["id"] for li in s["line_items"]}
+        for e in self.book.shopping:
+            if e["status"] == "open" and e.get("sku") in ordered:
+                e.update(status="ordered", order_id=s["order_id"], ordered_at=now)
         self.book.post(f"{s['buyer']} ordered {title} (${total / 100:.2f}), "
                        f"arriving tomorrow.", to=[m.name for m in self.h.members.values()],
                        by=s["buyer"], now=now)
@@ -681,7 +840,8 @@ class Care:
         for a in self.ledger.actions:
             if a.at <= since or a.source != "hearth":
                 continue
-            if a.domain in ("calendar", "rota", "rides", "board", "doses"):
+            if a.domain in ("calendar", "rota", "rides", "board", "doses",
+                            "list", "flag"):
                 continue                         # summarised by the board post
             if me and a.by and me.answers_to(a.by):
                 continue                         # you know what you did

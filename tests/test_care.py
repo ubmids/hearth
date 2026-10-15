@@ -800,6 +800,94 @@ def test_a_torn_last_line_is_dropped_but_damage_in_the_middle_breaks_the_chain()
     print("PASS a torn tail is a crash, a torn middle is a broken chain")
 
 
+# --- the end of a shift --------------------------------------------------
+HANDOVER = ("Alexa, I'm off. Mom ate half her lunch, she was a bit dizzy after "
+            "her walk, and we're nearly out of Ensure.")
+
+
+def test_a_handover_reaches_the_board_the_list_and_the_person_with_the_say():
+    house = House()
+    r = house.call("handover", note=HANDOVER, given_by="Grace")
+    reply = r["content"][0]["text"]
+    assert reply == ("Thanks, Grace. I've left the handover for Ada and Tom on the "
+                     "family board, put Ensure on the shopping list, and flagged one "
+                     "thing for Ada: she was a bit dizzy after her walk."), reply
+    book = house.server.care.book
+    # The note is kept as handed over, without the "Alexa, I'm off".
+    post = next(p for p in book.board if p.get("about") == "handover" and "Tom" in p["to"])
+    assert post["text"] == ("Grace handed over: Mom ate half her lunch, she was a bit "
+                            "dizzy after her walk, and we're nearly out of Ensure."), post
+    # Ensure is on the shared list, stocked by the sandbox pharmacy.
+    [item] = [e for e in book.shopping if e["status"] == "open"]
+    assert item["item"] == "Ensure" and item["sku"] == "otc-ensure-24", item
+    # The dizziness is pinned to Ada only, who holds the say over her medication.
+    flag = next(p for p in book.board if p["text"].startswith("Grace flagged"))
+    assert flag["to"] == ["Ada"] and flag.get("pin_until"), flag
+    # Three steps, each its own action on the record, by Grace.
+    sc = r["structuredContent"]
+    assert [s["service"] for s in sc["steps"]] == ["list", "flag", "board"], sc["steps"]
+    assert sc["flagged_for"] == "Ada" and sc["added"] == ["Ensure"]
+    assert all(a.by == "Grace" for a in house.home[1].actions[-3:])
+    print("PASS a handover reaches the board, the list and the person with the say")
+
+
+def test_a_handover_with_nothing_worrying_flags_nobody():
+    house = House()
+    reply = house.say("handover", note="She ate all her lunch and had a nap",
+                      given_by="Grace")
+    assert reply == ("Thanks, Grace. I've left the handover for Ada and Tom on the "
+                     "family board."), reply
+    assert not any(p["text"].startswith("Grace flagged")
+                   for p in house.server.care.book.board)
+    print("PASS a quiet handover flags nobody")
+
+
+def test_the_sibling_hears_the_handover_and_the_holder_cannot_miss_the_flag():
+    house = House()
+    house.call("handover", note=HANDOVER, given_by="Grace")
+    tom = house.say("catch_up", person="Tom")
+    assert "Grace handed over: Mom ate half her lunch" in tom, tom
+    assert "Grace flagged" not in tom, tom              # the flag is Ada's
+    ada = house.say("catch_up", person="Ada")
+    assert "Grace flagged at handover: she was a bit dizzy after her walk." in ada, ada
+    # Pinned: it is still in front of Ada after she has checked in once.
+    again = house.say("catch_up", person="Ada")
+    assert "Grace flagged at handover" in again, again
+    print("PASS Tom hears the handover; Ada's flag stays pinned")
+
+
+def test_the_shared_list_is_one_list_and_an_order_ticks_it_off():
+    house = House()
+    house.call("handover", note=HANDOVER, given_by="Grace")
+    assert house.say("shopping_list", asked_by="Tom", add="ensure") == (
+        "Ensure is already on the list, added by Grace.")
+    assert house.say("shopping_list", asked_by="Tom", add="wipes") == (
+        "Added wipes to the shopping list.")
+    listed = house.say("shopping_list", asked_by="Ada")
+    assert listed.startswith("2 on the list: Ensure, from Grace; wipes, from Tom."), listed
+    # "Order what's on the list" prices the stocked item, within Ada's limit.
+    q = house.call("reorder", item="what's on the list", asked_by="Ada")["structuredContent"]
+    assert q["approved"] and q["total"] == 3899, q
+    s = house.c.post("/checkout-sessions", headers={"Authorization": f"Bearer {house.tok}"},
+                     json={"line_items": [{"item": {"id": "otc-ensure-24"}, "quantity": 1}],
+                           "buyer": {"first_name": "Ada"}}).json()
+    done = house.c.post(f"/checkout-sessions/{s['id']}/complete",
+                        headers={"Authorization": f"Bearer {house.tok}",
+                                 "Idempotency-Key": "k-ensure"}).json()
+    assert done["status"] == "completed", done
+    items = {e["item"]: e["status"] for e in house.server.care.book.shopping}
+    assert items == {"Ensure": "ordered", "wipes": "open"}, items
+    print("PASS one shared list; paying for Ensure ticks it off")
+
+
+def test_ordering_an_empty_list_says_so_and_charges_nothing():
+    house = House()
+    r = house.call("reorder", item="the list", asked_by="Ada")
+    assert r.get("isError"), r
+    assert "nothing on the shopping list" in r["content"][0]["text"], r
+    print("PASS an empty list orders nothing")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
