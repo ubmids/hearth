@@ -25,9 +25,10 @@ import io
 import json
 import os
 import re
+import time
 import wave
 
-from .care import MED_ALIASES
+from .care import MED_ALIASES, local
 
 # --- planning ---------------------------------------------------------------
 # Medicines by name, brand and kitchen word. Brands matter: a person reaching
@@ -204,6 +205,10 @@ def _user_turn(said, speaker, ctx) -> str:
     """What the model is told about this turn: who spoke, what they said, and
     the two bits of conversation state a host would carry."""
     lines = [f"{speaker} says: {said}"]
+    # A host knows the date; without it a model turns "Thursday" into
+    # whichever date it guesses, and the appointment moves to a Sunday.
+    n = local(ctx["now"]) if ctx.get("now") else local(time.time())
+    lines.append(f"(It is {n:%A} {n.day} {n:%B %Y}, {n:%H:%M} where the household is.)")
     if ctx.get("medication"):
         lines.append(f"(The last medicine discussed was {ctx['medication']}.)")
     if ctx.get("device"):

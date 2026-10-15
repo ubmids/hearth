@@ -48,8 +48,10 @@ tool, pass along who is speaking, and say Hearth's answer faithfully.
 | "Mom finished the antibiotics" | `remember(said, speaker)` — Hearth recognises the situation ending |
 | "What have you done today?" | `record()` |
 
-When `when` is a time, prefer ISO 8601 in the household's local time
-(`2026-10-15T10:00`). Spoken forms ("Thursday at 10am") also work.
+Pass `when` as it was said ("Thursday at 10am", "tomorrow at 2:30pm"):
+Hearth resolves it in the household's own time zone. Convert it to ISO 8601
+(`2026-10-22T10:00`) only if you know the household's date for certain; a
+wrong conversion moves the appointment to the wrong day.
 
 ## Paying
 

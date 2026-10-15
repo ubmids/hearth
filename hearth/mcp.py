@@ -229,7 +229,7 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "what": {"type": "string", "description": "e.g. cardiology, dentist"},
-                "when": {"type": "string", "description": "ISO 8601 local time, or as said: 'Thursday at 10am'."},
+                "when": {"type": "string", "description": "As said: 'Thursday at 10am'. Hearth resolves it in the household's time zone. ISO 8601 local time also works."},
                 "asked_by": {"type": "string"},
                 "person": {"type": "string"},
                 "where": {"type": "string"},
