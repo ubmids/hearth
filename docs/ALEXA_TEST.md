@@ -108,8 +108,9 @@ console is at https://developer.amazon.com/alexa/console/ask.
 
    One-shot also works: `tell hearth care I'm just going to take my blood thinner`.
 8. **Record it.** Screen-record the browser (Cmd+Shift+5, selected portion)
-   while you type the first two lines. That is the "Amazon surface" shot in
-   the video (`docs/video/SCRIPT.md`, 1:58).
+   while you type the first two lines. Keep 8 seconds ending on the red card
+   and save it as `~/Desktop/hackathons/hearth-video/inserts/amazon.mp4`: that
+   is the "Amazon surface" shot in the video (`docs/video/SHOTS.md`).
 9. **On a real Echo (if you have one).** The development skill is already
    enabled on every device registered to the same account. "Alexa, open hearth
    care", then "I'm just going to take my blood thinner". On an Echo Show the

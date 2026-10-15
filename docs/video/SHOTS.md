@@ -1,73 +1,66 @@
 # Shot list and how to finish the video
 
-Everything lives in `~/Desktop/hackathons/hearth-video/` (outside the repo:
-media does not belong in git).
+Everything lives in `~/Desktop/hackathons/hearth-video/`, outside the repo
+(media does not belong in git).
 
 ```
 hearth-video/
-  take1/              a film.py take: screen.webm, audio/, timeline.json, sim-run.mp4
-    hearth-demo.mp4   the cut, from rough_cut.py
+  take5/              the current take (15 Oct, Pharmacy Label design)
+    sim-run.mp4       the simulated Alexa+ afternoon, 7 scenes, every line voiced
+    hearth-demo.mp4   the cut, from rough_cut.py: 2:57.3 with every placeholder in
+    hearth-demo.srt   captions for the upload
     cut.json          each segment, its source, and whether it is a placeholder
-  voices/             real people's lines, for film.py --voices
-  inserts/            real footage and narration, for rough_cut.py --inserts
+  inserts/            YOUR FILES GO HERE (conformance.txt is already there)
+  voices/             optional: real people's lines, for a new take
 ```
 
-## What is already rendered
+## Finish it: four files, then one command
 
-| piece | where | made by |
-|---|---|---|
-| The whole simulated Alexa+ afternoon, 7 scenes, with Alexa's voice at each answer | `take1/sim-run.mp4` | `demo/film.py` |
-| Lower thirds, stats card, tech card (real `scripts/conformance.sh` output), close card | `take1/cut/*.png` | `demo/rough_cut.py` + `demo/cards.html` |
-| A full cut with placeholders | `take1/hearth-demo.mp4` | `demo/rough_cut.py` |
+Record on the phone, AirDrop to the Mac, and save each file into
+`~/Desktop/hackathons/hearth-video/inserts/` with exactly this name.
 
-## What needs a person (about 90 minutes in all)
+| # | file | what | by |
+|---|---|---|---|
+| 1 | `amazon.mp4` | **8 s** screen recording of the Alexa developer console Test tab: type `open hearth care`, then `I'm just going to take my blood thinner`, until the red card shows. Steps: `docs/ALEXA_TEST.md`. Cmd+Shift+5, selected portion, at least 1280 wide. | **18 Oct** |
+| 2 | `n-traffic.m4a` | Voice Memo: "Over MCP, a model chose give dose. Hearth's server refused it, and signed the refusal into the record." | 20 Oct |
+| 2 | `n-tech.m4a` | Voice Memo: "MCP 2025-11-25, passing the official conformance suite. And the model choosing every call is a small open one on this laptop. It doesn't need to know warfarin. Hearth does." | 20 Oct |
+| 2 | `n-close.m4a` | Voice Memo: "Hearth. The memory, and the conscience, of a family caring for someone." | 20 Oct |
+| 3 | `oncam.mp4` (or `.mov`) | **12 s** of you to camera, landscape, head and shoulders, phone on a stand at eye level, window light from the side. One true sentence, or the fallback: "I built Hearth for families splitting the care of a parent: a daughter with the doctor's letters, a son two states away, an aide on weekday mornings. Nobody holds the whole picture. That gap is where doses get doubled." | 20 Oct |
+| 4 | `buzz.mp4` (or `.mov`) | **3 s** of a phone lying screen up on a table as the push arrives (below). | 20 Oct |
 
-Do them in this order. Each one makes the cut better on its own, so stop
-wherever time runs out.
+**The push for `buzz.mp4`.** Install the free **ntfy** app on the phone and
+subscribe to a hard-to-guess topic, say `hearth-ada-7q2x`. Start filming the
+phone, then on the Mac send Hearth's own handover push with Hearth's own
+sender:
 
-### 1. Narration, Subomi (10 minutes, any quiet room)
+```bash
+cd ~/Desktop/hackathons/hearth && python3 -c "from hearth.notify import _send; _send('https://ntfy.sh/hearth-ada-7q2x', {'by': 'Grace', 'text': 'Grace flagged at handover: she was a bit dizzy after her walk.'}, 'Ada')"
+```
 
-Record on the phone's Voice Memos, one file per line, then AirDrop them into
-`inserts/`:
+The banner reads "Hearth: from Grace". Keep the 3 seconds around it.
 
-| file | line |
-|---|---|
-| `n-traffic.m4a` | "Over MCP, a model chose give dose. Hearth's server refused it, and signed the refusal into the record." |
-| `n-tech.m4a` | "MCP 2025-11-25, passing the official conformance suite. And the model choosing every call is a small open one on this laptop. It doesn't need to know warfarin. Hearth does." |
-| `n-close.m4a` | "Hearth. The memory, and the conscience, of a family caring for someone." |
+**Then the one command** (any time; re-run it after each file you add):
 
-### 2. On camera, Subomi or a real carer (20 minutes)
+```bash
+cd ~/Desktop/hackathons/hearth && python3 demo/rough_cut.py ~/Desktop/hackathons/hearth-video/take5 --inserts=~/Desktop/hackathons/hearth-video/inserts
+```
 
-`inserts/oncam.mp4`, 12 to 14 seconds, landscape, head and shoulders, phone
-on a stand at eye level, window light from the side, phone mic within a metre.
-Say one true thing. If there is a person in your life who has missed or
-doubled a dose, or who looks after a parent, say that in one sentence. If not,
-the fallback line is in `SCRIPT.md` at 0:20. A real carer saying it is worth
-more than anything else in the video: if a friend or neighbour does this
-work, ask them for 15 seconds.
+It needs only ffmpeg: the cards rendered for take 5 are reused. It prints each
+segment, marks any still a PLACEHOLDER, and prints the total. With the four
+files at the lengths above the total is about 2:55. If it says OVER 3:00,
+trim `oncam` first, then `amazon`, never below 8 s.
 
-### 3. The phone buzz (5 minutes)
+When nothing says PLACEHOLDER (the people's voices may stay `say`, see below),
+upload `take5/hearth-demo.mp4` to YouTube as **public**, title "Hearth: an
+Alexa+ add-on for families caring for a parent", add `take5/hearth-demo.srt`
+as captions, and paste the URL into `docs/SUBMISSION.md` under Links.
 
-1. Install **ntfy** on the phone and subscribe to a hard-to-guess topic.
-2. Start Hearth with `HEARTH_NOTIFY_ADA=https://ntfy.sh/<topic>`.
-3. Film the phone lying on a table, screen up. Trigger Grace's handover (play
-   the take, or type the line at `/alexa`). Keep 3 seconds: the buzz and the
-   banner "Hearth: from Grace".
-4. Save as `inserts/buzz.mp4`.
+## Optional: the four people's real voices (20 minutes, a new take)
 
-### 4. The Amazon console shot (40 minutes, needs the Amazon login)
-
-Follow `docs/ALEXA_TEST.md`. Screen-record the Test tab (Cmd+Shift+5,
-selected portion, at least 1280 wide) while typing `open hearth care` and
-`I'm just going to take my blood thinner`, until the red card shows. Keep
-10 seconds and save as `inserts/amazon.mp4`. If you have an Echo Show, film it
-there as well and use whichever looks better.
-
-### 5. The four people's lines (20 minutes, optional but worth it)
-
-Four voices: Rose (older woman), Grace (the aide), Tom (Subomi can do Tom),
-Ada (a woman, 40s). Record each line as its own file in `voices/`, named by
-scene:
+The placeholder people's voices are macOS `say`; the judges' audit says
+synthetic family voices read as "a robot play", and real voices are quicker,
+which brings the total to about 2:50. Rose (older woman), Grace (the aide),
+Tom (Subomi can do Tom), Ada (a woman, 40s). One file per line in `voices/`:
 
 | file | line |
 |---|---|
@@ -79,45 +72,32 @@ scene:
 | `05-ada.m4a` | "Yes, go ahead." |
 | `06-ada.m4a` | "Alexa, show me the record." |
 
-Then record a new take with them (step 6). The typing on screen follows each
-recording's length.
-
-### 6. Re-render (5 minutes, on the laptop, or ask an agent)
+A new take needs a fresh local Hearth, the local planner and playwright
+(`pip install -r requirements-dev.txt`), so ask an agent, or:
 
 ```bash
 cd ~/Desktop/hackathons/hearth
-# a fresh Hearth for the take: see the top of demo/film.py for the env
-# (planner model, HEARTH_TZ set to a zone where it is mid-afternoon, ntfy topic)
-python3 demo/film.py http://localhost:8000 ~/Desktop/hackathons/hearth-video/take2 \
+# HEARTH_TZ: any zone where it is now mid-afternoon (the device clock follows it)
+export HEARTH_TZ=America/Sao_Paulo HEARTH_ISSUER=http://localhost:8000 HEARTH_DATA=/tmp/hearth-take6/db
+export HEARTH_SIM_LLM_PROVIDER=openai HEARTH_SIM_LLM_BASE_URL=http://localhost:11434/v1
+export HEARTH_SIM_LLM_API_KEY=ollama HEARTH_SIM_LLM_MODEL=qwen2.5:7b-instruct
+export HEARTH_SIM_LLM_TIMEOUT=30 HEARTH_SIM_LLM_WARMUP=1
+mkdir -p /tmp/hearth-take6 && python3 -m uvicorn hearth.app:app --port 8000 &   # wait ~40 s for the warm-up
+python3 demo/film.py http://localhost:8000 ~/Desktop/hackathons/hearth-video/take6 \
     --voices=~/Desktop/hackathons/hearth-video/voices
-python3 demo/rough_cut.py ~/Desktop/hackathons/hearth-video/take2 \
+python3 demo/rough_cut.py ~/Desktop/hackathons/hearth-video/take6 \
     --inserts=~/Desktop/hackathons/hearth-video/inserts
 ```
 
-`rough_cut.py` prints every segment, flags any that are still placeholders,
-and prints the total length. When nothing says PLACEHOLDER and the total is
-under 3:00, upload `hearth-demo.mp4` to YouTube or Vimeo as **public**, title
-"Hearth: an Alexa+ add-on for families caring for a parent", and paste the URL
-into `docs/SUBMISSION.md`.
+`film.py` prints REDO if any scene was not planned by the model alone (it
+timed out to the offline rules, or a guard stepped in): run that take again.
 
-## Which model plans the take
+## Which model plans a take
 
-The header names it. Options, cheapest first:
-
-1. **A local model** (free): `HEARTH_SIM_LLM_BASE_URL=http://localhost:11434/v1`,
-   `HEARTH_SIM_LLM_MODEL=qwen2.5:7b-instruct` (native tool calls, about 1 s a
-   line on an M2 Pro when nothing else is using the GPU) or `qwen2.5vl:7b`
-   (no tool API, so Hearth asks it for JSON; also right on every demo line).
-   The header says "on this machine", which is a point in itself: the safety
-   is in the server, so the planner can be small.
-2. **Claude Haiku through a relay**: set the OpenAI-compatible base URL to the
-   relay, the model to `claude-haiku-4-5-20251001`, and
-   `HEARTH_SIM_LLM_LOCAL=0` so the header does not say "on this machine".
-   About 5,000 input tokens a line, so a few cents a take.
-3. **Amazon Bedrock**: `HEARTH_BEDROCK_MODEL`, `AWS_REGION`,
-   `AWS_BEARER_TOKEN_BEDROCK`. Header: "on Amazon Bedrock". The most on-brand,
-   since Alexa+ runs on Bedrock; needs an AWS account with model access.
-
-Redo any take whose header shows `· dose guard` or `· day as said` on a
-filmed scene: the guards are right to step in, but the take should show the
-model getting it right.
+The header names it. Take 5 is `qwen2.5:7b-instruct` through Ollama on the
+laptop, which is free and says "on this machine": a point in itself, since the
+safety is in the server and the planner can be small. On a busy Mac a call
+takes 3 to 8 s, so keep `HEARTH_SIM_LLM_TIMEOUT=30` and the warm-up on, or the
+first scenes fall back to the offline rules. The other options (a hosted
+model through a relay, or Amazon Bedrock with `HEARTH_BEDROCK_MODEL`,
+`AWS_REGION`, `AWS_BEARER_TOKEN_BEDROCK`) cost money and are not needed.

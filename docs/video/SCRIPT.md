@@ -25,10 +25,11 @@ Alexa's voice stays synthetic on purpose: it is the assistant.
 
 ## Second by second
 
-Times are from take 4 (15 Oct, Qwen2.5-VL 7B planning on the laptop,
-placeholder voices). Real voices are usually quicker than the placeholders,
-which is where the margin under 3:00 comes from. The take 4 cut with every
-placeholder in is 2:59.7: `rough_cut.py` prints the real total each time.
+Times are from take 5 (15 Oct, the Pharmacy Label design, qwen2.5 7B
+planning on the laptop, placeholder voices). Real voices are usually quicker
+than the placeholders, which is where the margin under 3:00 comes from. The
+take 5 cut with every placeholder in is 2:57.3: `rough_cut.py` prints the
+real total each time.
 
 | time | what | sound | lower third | who |
 |---|---|---|---|---|
@@ -68,7 +69,7 @@ handover, the order, or the Amazon console shot.
   memory" the rubric's creative examples describe, shown and not claimed.
 - **An Amazon surface.** The classic skill in the developer console simulator
   is the only Amazon-run surface any entrant can reach (Alexa+ add-on tools are
-  partner-only), so it gets 10 seconds.
+  partner-only), so it gets 8 seconds.
 - **Says it is simulated**, in the header, on every device frame, in the
   first lower third and on the close card. The rules require it.
 

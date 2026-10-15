@@ -26,21 +26,27 @@ before flipping visibility. It holds no secrets, only steps.
   November is 720 hours. If `gate-api` gets traffic, Hearth can be suspended
   in the middle of judging (9 to 20 Nov). Either suspend `gate-api` for
   November or put Hearth on Starter ($7). Starter also removes the cold start.
-- **The video** is rendered with placeholders: see `docs/video/SHOTS.md`. The
-  current cut is `~/Desktop/hackathons/hearth-video/take4/hearth-demo.mp4`.
+- **The video** is re-filmed in the Pharmacy Label design (take 5) and cut
+  with placeholders: `~/Desktop/hackathons/hearth-video/take5/hearth-demo.mp4`,
+  2:57.3. Only your four files are missing: `docs/video/SHOTS.md`.
 
 ## Your steps, in order
 
-1. **Amazon developer console (40 min, by 18 Oct).** `docs/ALEXA_TEST.md`:
-   make the skill token, add `HEARTH_SKILL_TOKEN` on Render, build the ZIP,
-   create the Alexa-hosted skill, test in the simulator, screen-record 10 s.
-   Note anything that goes wrong for the friction log.
-2. **Film and record (about 1 h, by 20 Oct).** `docs/video/SHOTS.md` steps 1
-   to 5: narration, 12 s on camera, the phone buzz, the console recording,
-   optionally real voices for Rose, Grace, Ada and Tom.
-3. **Render the final cut** (`docs/video/SHOTS.md` step 6, or ask an agent).
-   Upload public to YouTube or Vimeo, with `hearth-demo.srt` as captions.
-   Paste the URL into `docs/SUBMISSION.md` under Links.
+1. **Amazon console, by 18 Oct (40 min).** `docs/ALEXA_TEST.md`: make the
+   skill token, add `HEARTH_SKILL_TOKEN` on Render, build the ZIP, create the
+   Alexa-hosted skill, test in the simulator. Screen-record 8 s ending on the
+   red card and save it as `hearth-video/inserts/amazon.mp4`. Note anything
+   that goes wrong for the friction log.
+2. **Record, by 20 Oct (about 40 min).** Into `~/Desktop/hackathons/hearth-video/inserts/`,
+   named exactly as in `docs/video/SHOTS.md`: the 3 narration lines
+   (`n-traffic.m4a`, `n-tech.m4a`, `n-close.m4a`), 12 s of you on camera
+   (`oncam.mp4`), and 3 s of the phone getting the push (`buzz.mp4`; the
+   one-line push command is in SHOTS.md).
+3. **One command, then upload, by 21 Oct.**
+   `cd ~/Desktop/hackathons/hearth && python3 demo/rough_cut.py ~/Desktop/hackathons/hearth-video/take5 --inserts=~/Desktop/hackathons/hearth-video/inserts`.
+   When it prints no PLACEHOLDER and a total under 3:00, upload
+   `take5/hearth-demo.mp4` public to YouTube with `take5/hearth-demo.srt` as
+   captions, and paste the URL into `docs/SUBMISSION.md` under Links.
 4. **Free hours (by 1 Nov).** Suspend `gate-api` for November, or upgrade
    Hearth to Starter.
 5. **Make both repos judgeable (by 21 Oct).** Delete this file first.
