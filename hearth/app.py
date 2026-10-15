@@ -57,7 +57,7 @@ def seed_care_household(h: Household, book: CareBook, now=None) -> None:
     if h.members:
         return
     now = now or time.time()
-    mom = h.add_member("Mom", role="owner", grants=["thermostat", "meals"],
+    mom = h.add_member("Mom", role="owner", grants=["meals"],
                        aliases=["Rose", "Mum", "Grandma", "me", "I"])
     ada = h.add_member("Ada", role="adult",
                        grants=["medication.*", "diet", "appointments", "purchases"])
