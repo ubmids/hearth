@@ -41,9 +41,9 @@ from playwright.async_api import async_playwright
 
 VOICES = {"Alexa": "Samantha", "Rose": "Grandma", "Grace": "Flo",
           "Ada": "Sandy", "Tom": "Reed"}
-RATE = {"Alexa": 185, "Rose": 165}           # words a minute; others default
-HOLD_AFTER = 0.6                             # seconds of quiet after each answer
-TRAFFIC_SECONDS = 6.5                        # the MCP traffic panel, once, after the hero
+RATE = {"Alexa": 195, "Rose": 165}           # words a minute; others default
+HOLD_AFTER = 0.5                             # seconds of quiet after each answer
+TRAFFIC_SECONDS = 5.5                        # the MCP traffic panel, once, after the hero
 
 
 def speak(who: str, text: str, path: str) -> float:
