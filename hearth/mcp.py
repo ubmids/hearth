@@ -1009,8 +1009,10 @@ class HearthMCP:
     def _tool_handover(self, note, given_by, person=None):
         out = self.care.handover(note, given_by, person, now=self._now)
         giver = out["giver"]
-        told = next((s["line"] for s in out["steps"] if s["service"] == "board"), "")
-        parts = [told[:1].lower() + told[1:].rstrip(".")]
+        names = out["told"]
+        family = (", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1
+                  else (names[0] if names else "nobody"))
+        parts = [f"left the handover for {family} on the family board"]
         if out["added"]:
             parts.append("put " + " and ".join(e["item"] for e in out["added"])
                          + " on the shopping list")
@@ -1018,13 +1020,18 @@ class HearthMCP:
             parts.append(" and ".join(e["item"] for e in out["already"])
                          + " was already on the shopping list")
         if out["flagged_for"]:
-            pushed = any(n["to"] == out["flagged_for"] for n in out["notified"])
-            parts.append(f"flagged one thing for {out['flagged_for']}"
-                         + (f" and sent it to {out['flagged_for']}'s phone" if pushed else "")
-                         + ": " + "; ".join(out["concerns"]))
+            parts.append(f"flagged one thing for {out['flagged_for']}: "
+                         + "; ".join(out["concerns"]))
         said = (", ".join(parts[:-1]) + ", and " + parts[-1]) if len(parts) > 2 else (
             " and ".join(parts))
         speech = f"Thanks, {giver}. I've {said}."
+        # Phones are named once, at the end: the handover and the flag can
+        # both reach Ada, and saying so twice is noise.
+        phones = list(dict.fromkeys(n["to"] for n in out["notified"]))
+        if phones:
+            speech += (f" Sent to {phones[0]}'s phone." if len(phones) == 1 else
+                       " Sent to " + ", ".join(f"{p}'s" for p in phones[:-1])
+                       + f" and {phones[-1]}'s phones.")
         who = out["person"]
         return _text(speech, {
             "pattern": "list", "tone": "warn" if out["flagged_for"] else "ok",

@@ -55,6 +55,32 @@ def test_arrange_pushes_the_note_to_toms_phone_and_says_so():
     print("PASS Tom's phone gets the note, and the board records that it did")
 
 
+def test_a_handover_reaches_ada_twice_and_alexa_names_her_phone_once():
+    """The handover and the flag both go to Ada. Her phone gets both; the
+    reply names it once, at the end, and only because it was really sent."""
+    srv = HTTPServer(("127.0.0.1", 0), Ntfy)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    os.environ["HEARTH_NOTIFY_ADA"] = f"ntfy:http://127.0.0.1:{srv.server_port}/hearth-ada"
+    GOT.clear()
+    try:
+        house = House()
+        speech = house.say("handover", given_by="Grace", note=(
+            "I'm off. Mom ate half her lunch, she was a bit dizzy after her walk, "
+            "and we're nearly out of Ensure."))
+        assert speech.endswith("flagged one thing for Ada: she was a bit dizzy after "
+                               "her walk. Sent to Ada's phone."), speech
+        assert speech.count("phone") == 1, speech
+        house.server.care.book.notifier.wait()
+        bodies = sorted(g["body"] for g in GOT if g["path"] == "/hearth-ada")
+        assert bodies == ["Grace flagged at handover: she was a bit dizzy after her walk.",
+                          "Grace handed over: Mom ate half her lunch, she was a bit "
+                          "dizzy after her walk, and we're nearly out of Ensure."], bodies
+    finally:
+        os.environ.pop("HEARTH_NOTIFY_ADA", None)
+        srv.shutdown()
+    print("PASS Ada's phone gets the handover and the flag; Alexa says so once")
+
+
 def test_without_a_channel_the_board_is_all_and_alexa_says_only_that():
     house = House()
     speech = house.say("arrange", what="cardiology", when="Thursday at 10am", asked_by="Ada")
