@@ -167,6 +167,12 @@ def create_app(*, data_path=None, issuer=None, resource=None, seed=True) -> Fast
     # and empty means the shape check in AuthServer.authorize is the only guard.
     registered = [u.strip() for u in
                   os.getenv("HEARTH_REDIRECT_URIS", "").split(",") if u.strip()]
+    # Hearth's own two pages are always registered. They are same-origin, so
+    # they cannot make /authorize an open redirector, and leaving one out of
+    # the deploy's list sent a judge opening /alexa to a JSON error.
+    if registered:
+        registered += [u for u in (f"{issuer}/console", f"{issuer}/alexa")
+                       if u not in registered]
     auth = AuthServer(issuer=issuer, resource=resource,
                       redirect_uris=registered or None)
 

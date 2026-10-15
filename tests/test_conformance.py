@@ -482,10 +482,15 @@ def test_authorize_refuses_a_redirect_uri_it_does_not_know():
     os.environ["HEARTH_REDIRECT_URIS"] = "https://cb.test/done, https://cb.test/other"
     try:
         c2, app2 = client()
+        # Hearth's own console and simulator are always on the list: a deploy
+        # that named only one of them broke the other for every judge.
         assert app2.state.auth.redirect_uris == ["https://cb.test/done",
-                                                 "https://cb.test/other"]
+                                                 "https://cb.test/other",
+                                                 f"{ISSUER}/console", f"{ISSUER}/alexa"]
         for uri, expected in (("https://cb.test/other", 302),
-                              ("https://cb.test/unregistered", 400)):
+                              (f"{ISSUER}/alexa", 302),
+                              ("https://cb.test/unregistered", 400),
+                              (f"{ISSUER}/alexa/../evil", 400)):
             r = c2.get("/authorize", params={
                 "client_id": app2.state.auth.client_id, "redirect_uri": uri,
                 "code_challenge": s256("x" * 50), "code_challenge_method": "S256",
