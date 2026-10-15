@@ -237,13 +237,25 @@ def main(take: pathlib.Path, inserts: pathlib.Path, skip=()):
                               "pos": "low" if a == "traffic-on" else "right"}
     asyncio.run(render_cards(specs, cut.work))
 
+    # A scene's lower third comes up with Alexa's answer, not while the
+    # person is still talking: its times count from that answer.
+    replies = {}
+    for e in ev:
+        if e["kind"] == "line" and e["who"] == "Alexa":
+            replies.setdefault(e["scene"], e["at"])
+    first_scene = {"handover": 1, "catchup": 2, "arrange": 3, "order": 4, "record": 6}
+
     def thirds(seg, origin):
         out = []
+        shift = 0.0
+        if seg in first_scene:
+            n = first_scene[seg]
+            shift = replies[n] - ends[n - 1]           # when Alexa answers, in the segment
         for i, (s, a, b, *_rest) in enumerate(THIRDS):
             if s != seg:
                 continue
-            a = (at[a] - origin) if isinstance(a, str) else a
-            b = (at[b] - origin) if isinstance(b, str) else b
+            a = (at[a] - origin) if isinstance(a, str) else a + shift
+            b = (at[b] - origin) if isinstance(b, str) else b + shift
             out.append((cut.work / f"third{i}.png", a, b))
         return out
 
