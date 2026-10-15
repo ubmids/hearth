@@ -6,10 +6,11 @@ icon and carousel, the README images, the Devpost gallery, the thumbnail, the
 video cards) follows it. If a rule here is wrong, change the rule in this file
 first, in the same commit.
 
-Status: Phase 1 (15 Oct 2026). Three directions are in
-[`directions.html`](directions.html). The tokens below are **Direction A, Care
-Card**, the recommendation. If Subomi picks B or C, replace the Tokens section
-with that direction's values from `directions.html`; everything else stands.
+**Chosen direction: C, Pharmacy Label** (Subomi, 15 Oct 2026). The three
+directions considered are in [`directions.html`](directions.html). C is
+adjusted for the three risks flagged there: capitals only on short label
+headers and sticker words, a household label for scenes that are not
+medicine, and an order of work that puts the Echo Show card first.
 
 ## What the judges score
 
@@ -76,45 +77,77 @@ the honest "Simulated Alexa+" labelling, the one-red-card refusal as the hero.
 
 Each one has a test. A surface that fails a test is not done.
 
-1. **Readable from across the kitchen.** The Echo Show card is read at two to
-   three metres by an 84-year-old. *Test:* on the 768x480 canvas, title is at
-   least 44 px, item text at least 22 px, nothing below 18 px; no card clips
-   at 768x480 with its longest real content (record, sort it out).
-2. **Who, then what, then why.** Every card and every board note names the
-   person: who did it, whose rule it was, who has the say. *Test:* each card in
-   the ten scenes names at least one family member; no card shows a tool name,
-   a snake_case word or a bare hash above the footer.
-3. **Calm by default, one alarm.** The stop colour means one thing, "Hearth
-   refused", and nothing else uses it. *Test:* the stop colour appears on at
-   most one element group per screen (the stop card and its spoken line); no
-   looping animation except the device light while speaking; motion honours
-   `prefers-reduced-motion`.
-4. **One product, one palette.** Sim, console, MCP App card, APL card, icon,
-   README images, gallery, video cards and thumbnail all draw from the tokens
-   below. *Test:* `grep -oE '#[0-9a-fA-F]{6}'` over `hearth/web`, `demo/cards.html`,
-   `skill/lambda/apl.py` and `assets/src` finds only token values.
-5. **The family first, the plumbing on request.** Protocol detail is real and
-   judges want it, but it is the second layer. *Test:* the first screen of
-   `/alexa` shows the household and the device; the MCP traffic is one click
-   (or `T`) away and labelled "Under the hood"; no monospace text outside the
-   traffic panel, the receipt line and the tech card.
-6. **Devices look like their devices.** Echo Show landscape 16:10 with a
-   speaker bar, Echo Dot as a fabric puck with a light ring, Alexa app as a
-   portrait phone. *Test:* Ada's scenes render in a portrait frame; the Dot
-   shows its ring state (idle, listening, speaking, note waiting).
-7. **Honest at every size.** The simulation and the sandboxes are named on
-   every surface, legibly. *Test:* "Simulated Alexa+" is visible in every
-   screenshot, every gallery image and every video frame of the sim, at 4.5:1
-   or better; "sandbox" appears beside every ride and pharmacy result.
+1. **Every card is a label.** Hearth's answers are drawn the way a family
+   already reads instructions about care: a header, facts in ruled rows, one
+   sticker that says what matters. *Test:* every card in the ten scenes has a
+   label header, rows separated by rules, and at most one sticker in the
+   header area.
+2. **Red means "Hearth refused", and nothing else.** The red sticker and the
+   red row mark appear only on a refused dose, a refused order, or a refusal
+   reported in a catch-up or the record. *Test:* in the ten scenes, red
+   appears in scene 1 (the dose), and in the catch-up and record rows that
+   report it; nowhere else. An overruled preference is not a refusal and is
+   never red.
+3. **Medicine looks like medicine; the household does not.** Dose cards use
+   the medicine label (solid black header, "For Mom", the drug name). The
+   handover, the list, the order, appointments, the record and what is true
+   use the household label (outlined header, blue "For the family" sticker).
+   *Test:* no non-dose card has a solid black header; no dose card has a blue
+   sticker.
+4. **Readable across a kitchen, and by an 84-year-old.** Sentence case for
+   titles, facts and body; capitals only for label headers (at most four
+   words) and sticker words (at most three). *Test:* on the 768x480 canvas the
+   title is 44 px or more, item text 22 px or more, nothing under 18 px; no
+   card clips with its longest real content (the record, "sort it out").
+5. **The family first, the plumbing on request.** Protocol detail is the
+   second layer. *Test:* the first screen of `/alexa` shows the four people
+   and the device; the MCP traffic sits behind "Under the hood" (button or
+   `T`); no monospace outside the traffic panel, times on a label, the
+   receipt line and the tech card.
+6. **Devices look like their devices.** Echo Show landscape 16:10, Echo Dot
+   as a puck with a ring, Alexa app as a portrait phone. *Test:* Ada's scenes
+   render in a portrait frame; the Dot shows idle, speaking and note-waiting.
+7. **Honest at every size.** *Test:* "Simulated Alexa+" is visible in every
+   sim screenshot, gallery image and sim video frame, at 4.5:1 or better;
+   "sandbox" appears beside every ride and pharmacy result.
+
+## The label grammar
+
+Two labels, one system. Same paper, same rules, same type, same row layout.
+
+| | Medicine label | Household label |
+|---|---|---|
+| Used for | a dose given, checked or refused; "which medicine?"; a medicine with no rule | handover, shopping list, order, appointments ("sorted"), catch-up, the record, what is true, why |
+| Header | solid `--rule` bar, `--paper` text: `HEARTH · FOR MOM` left, the drug name right | outlined: `--rule` text on `--paper`, 3 px rule under it: `HEARTH · HOUSEHOLD` left, the card's own header right (`HANDOVER`, `SORTED`, `SHOPPING LIST`, `THE RECORD`) |
+| Frame | 3 px `--rule` border all round | 3 px `--rule` border all round |
+| Sticker in the header area | red `STOPPED` on a refusal; green `LOGGED` / `TAKEN TODAY`; outlined `CHECK FIRST` when there is no rule | blue `FOR THE FAMILY`; outlined `NEEDS ADA` (the person who decides) when something is flagged; red `REFUSED` only on a refused order |
+| Rule chip | yellow `RULE · ADA`: the rule and who set it | yellow `ADA'S RULE` when a preference is in force |
+
+Stickers:
+
+| Sticker | Colour | Means | Never |
+|---|---|---|---|
+| Red | `--red` on `--on-red` | Hearth refused it | anything else, including a broken record (that is outlined `CHECK FAILED`) |
+| Yellow | `--yellow`, `--on-yellow` text | the rule, and who set it | warnings |
+| Blue | `--blue`, `--on-blue` text | for the family: a note, a plan, a purchase | medicine |
+| Green | `--green`, `--on-green` text | done, logged, paid | a refusal |
+| Outlined | `--rule` border, `--ink` text | needs a person: who decides, or check first | decoration |
+
+Row marks (the square at the start of each row): green check for done, red
+cross for a refusal, outlined exclamation for needs attention, outlined dot
+for information, struck-through text (no colour) for a preference that was
+overruled.
 
 ## Reference board
 
 | Product | Take | Avoid |
 |---|---|---|
+| US prescription labels and auxiliary warning stickers | The whole system: a black header, heavy rules, facts in rows, a coloured sticker that says one thing. Every carer already reads these under stress. | Capitals for everything, and the tiny print. |
+| USPS and FedEx shipping labels | A label for things that are not medicine: the same rules and grid, a different header. The model for the household label. | Barcodes as decoration. |
 | NHS.UK care cards (non-urgent, urgent, emergency) | A three-level tone system that a frightened reader understands without colour: a heading word plus a band. Plain verbs. | The institutional blue and the form-heavy layout. |
 | GOV.UK Design System | Type-led hierarchy, 19 px minimum body, "warning text" with an icon and a bold first word, every colour at AA. | Austerity: Hearth is in a home, not a tax office. |
 | Apple Health, Medications | The dose log: "Taken 9:10 AM", a schedule in words, a calm list where the time is the headline. | Tiny pastel pill icons and the hidden-in-a-tab navigation. |
-| Atkinson Hyperlegible (Braille Institute) | A typeface designed for low-vision readers; distinct `I l 1` and `0 O` matter for doses and times. | Using it for every role: pair it with a serif for human words. |
+| IBM Plex Sans Condensed and Plex Mono | Condensed fits a label's long facts at a large size; Plex Mono's slashed zero keeps 9:10 and 10:00 apart. | Light weights: nothing under 400. |
 | Google Nest Hub, ambient and photo frame | Glanceable at distance, full-bleed, one fact per screen, warm at night. | Photo wallpaper behind text. |
 | Amazon Echo Show home and APL guidance | The 16:10 canvas, safe margins, big touch targets, voice first and screen second. | Alexa cyan and the light-bar gradient: that is Amazon's brand, not ours. |
 | CaringBridge | The family-update journal tone: short notes, who wrote them, when. | Its dated web layout and donation chrome. |
@@ -122,74 +155,78 @@ Each one has a test. A surface that fails a test is not done.
 | Things 3 | Quiet check marks, generous rows, hierarchy from weight not boxes. | Its productivity framing. |
 | Stripe receipts | The record as a receipt: the human line first, the identifier in small print at the foot. | Monospace everywhere. |
 | Withings Health Mate | Health data that does not shout; one accent per metric. | Gamified streaks. |
-| Pharmacy auxiliary labels ("Take once a day") | A real, familiar object for medicine rules; Direction C is built on it. | Novelty: in A and B it stays a reference, not a costume. |
 
-## Tokens (Direction A, Care Card)
+## Tokens (Direction C, Pharmacy Label)
 
 ### Colour
 
 Contrast is computed with the WCAG 2.1 relative-luminance formula
-(`design/contrast.py` reproduces every number). AA is 4.5:1 for text, 3:1 for
-large text and UI boundaries.
+(`python3 design/contrast.py` reproduces every number and exits non-zero on a
+failure). AA is 4.5:1 for text, 3:1 for large text and UI boundaries.
 
 | Token | Light | Dark | Use | Contrast (light / dark) |
 |---|---|---|---|---|
-| `--bg` | `#F4F5F1` | `#101412` | page | |
-| `--surface` | `#FFFFFF` | `#171D1A` | cards, device screen | |
-| `--sunk` | `#E9ECE5` | `#0B0E0D` | wells, the traffic panel | |
-| `--line` | `#D3D8CF` | `#2A332E` | dividers only (decorative) | 1.45 / 1.31 |
-| `--line-strong` | `#6B7770` | `#5F6D66` | input and button borders | 4.26 on bg / 3.42 on bg |
-| `--ink` | `#16201B` | `#EDF1EE` | text | 16.71 / 15.01 on surface |
-| `--ink-2` | `#46524B` | `#B4BFB8` | secondary text | 8.17 / 9.03 |
-| `--ink-3` | `#5F6B64` | `#8F9B94` | meta, timestamps (the floor) | 5.56 / 5.94 |
-| `--care` | `#1D5C47` | `#7CC9A5` | brand, done, primary action | 7.85 / 8.76 |
-| `--care-tint` | `#E1EFE7` | `#16302A` | done band background | care on it 6.62 / 7.22 |
-| `--on-care` | `#FFFFFF` | `#0B1A13` | text on a care button | 7.85 / 9.18 |
-| `--stop` | `#B42318` | `#FF8C7E` | refused, and only refused | 6.57 / 7.58 |
-| `--stop-tint` | `#FCEBE8` | `#3A1814` | stop band background | stop on it 5.69 / 7.05 |
-| `--caution` | `#7A4A00` | `#F0C25A` | flagged, needs attention, "Simulated" | 7.48 / 10.24 |
-| `--caution-tint` | `#FFF0C7` | `#33280E` | caution band background | caution on it 6.61 / 8.66 |
+| `--desk` | `#ECECE7` | `#0B0B0B` | page background, what a label sits on | ink on it 16.61 / 18.00 |
+| `--paper` | `#FFFFFF` | `#161616` | the label | |
+| `--line` | `#D2D2CB` | `#34342F` | page dividers only (decorative) | 1.52 / 1.45 |
+| `--rule` | `#111111` | `#EDEDE8` | label borders, row rules, the medicine header | 18.88 / 15.41 |
+| `--ink` | `#0B0B0B` | `#F5F5F0` | text | 19.68 / 16.55 |
+| `--ink-2` | `#3A3A3A` | `#C8C8C2` | secondary text | 11.37 / 10.77 |
+| `--ink-3` | `#595954` | `#A0A09A` | meta, timestamps (the floor) | 7.04 / 6.88 on paper, 5.94 / 7.49 on desk |
+| `--red` | `#C8201A` | `#FF5A4E` | refused, and only refused | 5.71 / 5.88 on paper |
+| `--on-red` | `#FFFFFF` | `#140303` | text on red | 5.71 / 6.54 |
+| `--red-tint` | `#FCE9E7` | `#3A1411` | the refused row's background | red on it 4.88 / 5.30 |
+| `--yellow` | `#FFD43B` | `#FFD43B` | the rule chip (background only) | on-yellow 13.81 / 13.81 |
+| `--on-yellow` | `#0B0B0B` | `#0B0B0B` | text on yellow | |
+| `--blue` | `#1F4FB5` | `#8DB0FF` | "for the family" | 7.38 / 8.43 on paper |
+| `--on-blue` | `#FFFFFF` | `#0B0B0B` | text on blue | 7.38 / 9.17 |
+| `--blue-tint` | `#E6EDFA` | `#16213A` | household highlight rows | blue on it 6.28 / 7.46 |
+| `--green` | `#006B47` | `#4FD19A` | done, logged, paid | 6.57 / 9.41 on paper |
+| `--on-green` | `#FFFFFF` | `#04140D` | text on green | 6.57 / 9.83 |
+| `--green-tint` | `#E2F2EA` | `#0F2A1F` | | green on it 5.67 / 7.96 |
 
-No other hex value appears in product code. Status is never colour alone:
-every status carries a glyph (check, cross, exclamation, dot) and a word.
+Yellow is never text and never a boundary on its own: it is always a filled
+chip with `--on-yellow` text. No other hex value appears in product code.
+Status is never colour alone: every sticker is a word, every row mark a glyph.
+
+The product pages are light. The MCP App card also has the dark set, used
+when the host asks for a dark theme.
 
 ### Type
 
-Google Fonts, three families, all chosen for this audience:
+Google Fonts, two families (the APL card uses Amazon Ember, the device font,
+at the same sizes and weights):
 
-- **Atkinson Hyperlegible Next** (400, 600, 700): every UI word, every card,
-  the video captions. Built by the Braille Institute for low-vision readers;
-  its `1`, `l` and `I` and its `0` and `O` cannot be confused, which matters
-  when the content is "9:10" and "once a day".
-- **Newsreader** italic (400, opsz 6..72): only for words a person said, the
-  quoted rule ("Dr. Patel says Mom takes one warfarin a day") and the lines in
-  the conversation. It makes the human voice visibly different from Hearth's.
-- **Atkinson Hyperlegible Mono** (400): only the traffic panel, the receipt
-  line and the tech card.
+- **IBM Plex Sans Condensed** (400, 500, 600, 700): every word on a label,
+  every page, the video cards. Condensed lets a long fact ("Booked a ride at
+  9:15 am, 45 minutes before") stay on one line at 22 px.
+- **IBM Plex Mono** (400, 600): times and doses on a label (`9:10 am`), the
+  receipt line, the traffic panel, the tech card.
 
-Scale (ratio 1.25, px):
+Capitals: label headers (four words at most), sticker words (three at most),
+nothing else. Titles, facts and body are sentence case.
+
+Scale (px):
 
 | Step | Web | Echo Show card (768x480) | Video (1920x1080) |
 |---|---|---|---|
-| caption | 14 | 18 | 28 |
-| meta | 15 | 18 | 32 |
-| body | 17 | 22 | 40 |
+| header and sticker (caps, 600, +0.06em) | 13 | 18 | 28 |
+| meta | 15 | 18 | 30 |
+| body and row text | 17 | 22 | 40 |
 | lead | 20 | 26 | 48 |
-| title | 28 | 44 | 72 |
-| display | 40 | 56 | 104 |
+| title (700) | 30 | 46 | 80 |
+| display (700) | 44 | 56 | 120 |
 
-Line height 1.4 for body, 1.1 for titles. Letter-spacing 0 except eyebrows
-(+0.06em, 600, sentence case, not all caps).
+Line height 1.3 for row text, 1.05 for titles.
 
 ### Spacing, radius, motion
 
-- Spacing: 4 px base: 4, 8, 12, 16, 24, 32, 48, 64. Card padding on the Echo
-  Show canvas 32 px; web cards 24 px; section gaps 48 px.
-- Radius: 0 for the card on a device (it is the screen), 6 for buttons and
-  inputs, 10 for web surfaces, and real device radii for device frames only.
-  No pills except the one "Simulated Alexa+" label.
-- Motion: 160 ms ease-out for state, 240 ms fade and 8 px rise for a new card,
-  items arriving 60 ms apart. The device light is the only loop. All of it off
+- Spacing: 4 px base: 4, 8, 12, 16, 24, 32, 48, 64. Label padding on the
+  768x480 canvas 24 px; rows 10 px top and bottom.
+- Radius: 0 for labels, stickers and buttons. Only device frames are rounded.
+- Rules: 3 px label border, 2 px row rules on the device, 1.5 px on the web.
+- Motion: 160 ms ease-out for state, 220 ms for a new label (fade, 6 px rise),
+  rows arrive 50 ms apart. The device ring is the only loop. All of it off
   under `prefers-reduced-motion: reduce`.
 
 ## Inventory
@@ -209,7 +246,8 @@ Screens:
 - Skill icon (`assets/src/icon.svg` and PNGs) and carousel
   (`assets/src/carousel.svg`, still the thermostat story: rewrite).
 
-Components: status mark; card; list row; person (initial, name, role, "has the
+Components: medicine label; household label; stickers (red, yellow, blue,
+green, outlined); row mark; list row; person (initial, name, role, "has the
 say over"); rule (what, value, who set it, when, why it won); quote; board
 note; record entry (number, time, human action, outcome, receipt in small
 print); device frames; Simulated label; say bar; buttons (primary, secondary,
@@ -219,35 +257,36 @@ Phase 2 constraints found in the tests: `tests/test_sim.py` and
 `skill/tests/test_skill.py` parse the `const SCRIPT = [` block in `alexa.html`
 (keep its format); `tests/test_phrasing.py` requires `x.title`, `x.reading`,
 `x.verdict.chip`, `x.verdict.line` and friends in `console.html`;
-`skill/tests/test_skill.py` asserts the APL stop colour is `#ff6b4a`, so
-changing that colour means updating that assertion in the same commit. Card
+`skill/tests/test_skill.py` asserts the APL stop colour, so a change to
+`--red` moves that assertion in the same commit. Card
 titles and items come from the server and are covered by tests: restyle them,
 do not reword them in Phase 2 unless the test moves with them.
 
 ## Submission assets
 
-- **Thumbnail** (Devpost, 3:2, 1500x1000, PNG): the Echo Show with the stop
-  card, the words "Hold on, Rose." and the wordmark. Nothing else. *Test:*
-  downscaled to 300 px wide, "Hold on, Rose." is readable and the red
-  "Stopped" band on the device is recognisable.
+- **Thumbnail** (Devpost, 3:2, 1500x1000, PNG): a medicine label reading
+  "Hold on, Rose." with the red STOPPED sticker, the Echo Show beside it, and
+  the wordmark. Nothing else. *Test:* downscaled to 300 px wide, "Hold on,
+  Rose." is readable and the red STOPPED sticker is recognisable.
 - **Gallery** (3:2, 1500x1000, six images, same frame on each): 1 the refusal,
   2 the handover, 3 Tom's catch-up on the Dot, 4 "sort it out" on Ada's phone,
   5 the order, 6 under the hood (traffic plus conformance). Each has one
-  sentence of caption at the top in `--ink` on `--bg`, the device below, the
+  sentence of caption at the top in `--ink` on `--desk`, the device below, the
   Simulated label in frame. No collages, no device mock-ups from stock.
 - **README hero**: image 1 of the gallery. Alt text says what it shows.
-- **Video title cards**: `--bg` background, the wordmark top left, one line of
-  at most eight words at display size, optional one-line sub at lead size. No
-  boxes around statistics: the number at display size, the source in caption.
-- **Lower thirds**: bottom left, inside a 96 px safe margin, `--surface` with
-  a 6 px left band in the scene's tone, at most two lines, on screen at least
-  four seconds, never over the card.
-- **Captions** (burned in): Atkinson Hyperlegible Next 40 px, `--ink` on a
-  `--surface` scrim at 92 %, bottom centre, at most two lines of 42 characters.
+- **Video title cards**: `--desk` background with one household label on it,
+  the wordmark in the label header, one line of at most eight words at display
+  size, optional one-line sub at lead size. Statistics are rows on a label:
+  the number at display size, the source as meta.
+- **Lower thirds**: a small household label, bottom left inside a 96 px safe
+  margin: a caps header and at most two sentence-case lines, on screen at
+  least four seconds, never over the card.
+- **Captions** (burned in): IBM Plex Sans Condensed 40 px, `--ink` on a
+  `--paper` scrim at 92 %, bottom centre, at most two lines of 42 characters.
 - **End card**: wordmark, tagline, repo URL, the simulation note at caption
   size, held four seconds.
-- **Tech card**: the one place the terminal look is allowed; it uses the
-  tokens' mono and colours, not a black terminal.
+- **Tech card**: the one place the terminal look is allowed; Plex Mono on a
+  household label, not a black terminal.
 - **Placeholder cards never ship.** `rough_cut.py` refuses a final render while
   any placeholder remains, or the cut is not final.
 
@@ -258,15 +297,17 @@ Do:
 - write the person's name before the action ("Grace gave it at 9:10");
 - use words for times and frequencies ("once a day", "9:10 this morning");
 - keep one idea per card and at most four rows;
-- put the receipt and hash in the footer at caption size;
+- put the receipt and hash in the footer, in Plex Mono at meta size;
 - test every surface at 390 px, at 768x480 and at 1920x1080.
 
 Don't:
 
 - use Alexa cyan, a light-bar gradient or any Amazon logo as decoration;
-- use emoji, gradients, glows, glass blur or radial background washes;
-- wrap things in rounded bordered boxes to make them look designed;
+- use emoji, gradients, glows, glass blur, shadows on labels or radial washes;
+- round a label, a sticker or a button;
+- set a title or a fact in capitals;
+- put a blue sticker on medicine, or a black medicine header on anything else;
 - put protocol words on the first screen outside "Under the hood";
-- use the stop colour for anything that is not a refusal;
+- use red for anything that is not a refusal;
 - ship a PLACEHOLDER card, a thermostat, or "Lorem";
 - centre body text, or set anything a family reads under 14 px on the web.

@@ -15,26 +15,29 @@ def ratio(a, b):
     return (hi + 0.05) / (lo + 0.05)
 
 
-# Direction A, Care Card (the binding set while A is chosen).
-A = {
-    "light": dict(bg="#F4F5F1", surface="#FFFFFF", sunk="#E9ECE5", line="#D3D8CF",
-                  line_strong="#6B7770", ink="#16201B", ink2="#46524B", ink3="#5F6B64",
-                  care="#1D5C47", care_tint="#E1EFE7", on_care="#FFFFFF",
-                  stop="#B42318", stop_tint="#FCEBE8",
-                  caution="#7A4A00", caution_tint="#FFF0C7"),
-    "dark": dict(bg="#101412", surface="#171D1A", sunk="#0B0E0D", line="#2A332E",
-                 line_strong="#5F6D66", ink="#EDF1EE", ink2="#B4BFB8", ink3="#8F9B94",
-                 care="#7CC9A5", care_tint="#16302A", on_care="#0B1A13",
-                 stop="#FF8C7E", stop_tint="#3A1814",
-                 caution="#F0C25A", caution_tint="#33280E"),
+# Direction C, Pharmacy Label (chosen 15 Oct 2026).
+C = {
+    "light": dict(desk="#ECECE7", paper="#FFFFFF", line="#D2D2CB", rule="#111111",
+                  ink="#0B0B0B", ink2="#3A3A3A", ink3="#595954",
+                  red="#C8201A", on_red="#FFFFFF", red_tint="#FCE9E7",
+                  yellow="#FFD43B", on_yellow="#0B0B0B",
+                  blue="#1F4FB5", on_blue="#FFFFFF", blue_tint="#E6EDFA",
+                  green="#006B47", on_green="#FFFFFF", green_tint="#E2F2EA"),
+    "dark": dict(desk="#0B0B0B", paper="#161616", line="#34342F", rule="#EDEDE8",
+                 ink="#F5F5F0", ink2="#C8C8C2", ink3="#A0A09A",
+                 red="#FF5A4E", on_red="#140303", red_tint="#3A1411",
+                 yellow="#FFD43B", on_yellow="#0B0B0B",
+                 blue="#8DB0FF", on_blue="#0B0B0B", blue_tint="#16213A",
+                 green="#4FD19A", on_green="#04140D", green_tint="#0F2A1F"),
 }
 
 PAIRS = [  # (foreground, background, minimum)
-    ("ink", "surface", 4.5), ("ink", "bg", 4.5), ("ink2", "surface", 4.5),
-    ("ink3", "surface", 4.5), ("ink3", "bg", 4.5), ("care", "surface", 4.5),
-    ("care", "care_tint", 4.5), ("on_care", "care", 4.5), ("stop", "surface", 4.5),
-    ("stop", "stop_tint", 4.5), ("caution", "surface", 4.5),
-    ("caution", "caution_tint", 4.5), ("line_strong", "bg", 3.0),
+    ("ink", "paper", 4.5), ("ink", "desk", 4.5), ("ink2", "paper", 4.5),
+    ("ink3", "paper", 4.5), ("ink3", "desk", 4.5), ("rule", "paper", 3.0),
+    ("red", "paper", 4.5), ("on_red", "red", 4.5), ("red", "red_tint", 4.5),
+    ("on_yellow", "yellow", 4.5), ("blue", "paper", 4.5), ("on_blue", "blue", 4.5),
+    ("blue", "blue_tint", 4.5), ("green", "paper", 4.5), ("on_green", "green", 4.5),
+    ("green", "green_tint", 4.5), ("ink", "red_tint", 4.5), ("ink", "blue_tint", 4.5),
 ]
 
 # The surfaces as they were on 15 Oct, for the audit in DESIGN.md.
@@ -46,12 +49,12 @@ BEFORE = [
 
 if __name__ == "__main__":
     bad = 0
-    for theme, p in A.items():
+    for theme, p in C.items():
         for fg, bg, need in PAIRS:
             r = ratio(p[fg], p[bg])
             ok = r >= need
             bad += not ok
-            print(f"A {theme:5} {fg:>12} on {bg:<12} {r:5.2f}  {'ok' if ok else 'FAIL'}")
+            print(f"C {theme:5} {fg:>12} on {bg:<12} {r:5.2f}  {'ok' if ok else 'FAIL'}")
     for name, fg, bg in BEFORE:
         print(f"before  {name:28} {ratio(fg, bg):5.2f}")
     raise SystemExit(1 if bad else 0)
