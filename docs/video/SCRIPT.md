@@ -28,7 +28,7 @@ Alexa's voice stays synthetic on purpose: it is the assistant.
 Times are from take 5 (15 Oct, the Pharmacy Label design, qwen2.5 7B
 planning on the laptop, placeholder voices). Real voices are usually quicker
 than the placeholders, which is where the margin under 3:00 comes from. The
-take 5 cut with every placeholder in is 2:57.3: `rough_cut.py` prints the
+take 5 cut with every placeholder in is 2:54.8: `rough_cut.py` prints the
 real total each time.
 
 | time | what | sound | lower third | who |

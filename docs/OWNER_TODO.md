@@ -28,7 +28,7 @@ before flipping visibility. It holds no secrets, only steps.
   November or put Hearth on Starter ($7). Starter also removes the cold start.
 - **The video** is re-filmed in the Pharmacy Label design (take 5) and cut
   with placeholders: `~/Desktop/hackathons/hearth-video/take5/hearth-demo.mp4`,
-  2:57.3. Only your four files are missing: `docs/video/SHOTS.md`.
+  2:54.8. Only your four files are missing: `docs/video/SHOTS.md`.
 
 ## Your steps, in order
 

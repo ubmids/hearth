@@ -5,9 +5,9 @@ Everything lives in `~/Desktop/hackathons/hearth-video/`, outside the repo
 
 ```
 hearth-video/
-  take5/              the current take (15 Oct, Pharmacy Label design)
+  take5/              the current take (15 Oct, Pharmacy Label design, phone cards fitted)
     sim-run.mp4       the simulated Alexa+ afternoon, 7 scenes, every line voiced
-    hearth-demo.mp4   the cut, from rough_cut.py: 2:57.3 with every placeholder in
+    hearth-demo.mp4   the cut, from rough_cut.py: 2:54.8 with every placeholder in
     hearth-demo.srt   captions for the upload
     cut.json          each segment, its source, and whether it is a placeholder
   inserts/            YOUR FILES GO HERE (conformance.txt is already there)
@@ -47,7 +47,7 @@ cd ~/Desktop/hackathons/hearth && python3 demo/rough_cut.py ~/Desktop/hackathons
 
 It needs only ffmpeg: the cards rendered for take 5 are reused. It prints each
 segment, marks any still a PLACEHOLDER, and prints the total. With the four
-files at the lengths above the total is about 2:55. If it says OVER 3:00,
+files at the lengths above the total is about 2:53. If it says OVER 3:00,
 trim `oncam` first, then `amazon`, never below 8 s.
 
 When nothing says PLACEHOLDER (the people's voices may stay `say`, see below),
