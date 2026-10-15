@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth design directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700&family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ------------------------------------------------------------------
+   Every colour is a variable on :root. Light first, then dark twice:
+   once for the system preference, once for an explicit choice.
+   ------------------------------------------------------------------ */
+:root{
+  /* page chrome */
+  --pg-bg:#F4F5F1; --pg-surface:#FFFFFF; --pg-ink:#16201B; --pg-ink2:#46524B; --pg-ink3:#5F6B64;
+  --pg-line:#D3D8CF; --pg-accent:#1D5C47; --pg-accent-tint:#E1EFE7; --pg-mark:#FFF0C7; --pg-mark-ink:#7A4A00;
+  /* device hardware, the same in both themes */
+  --hw-bezel:#121413; --hw-edge:#2C302E; --hw-fabric:#3B3F3D; --hw-shadow:rgba(16,20,18,.16);
+  --hw-island:#000000;
+
+  /* Direction A, Care Card */
+  --a-bg:#F4F5F1; --a-surface:#FFFFFF; --a-sunk:#E9ECE5; --a-line:#D3D8CF; --a-line-strong:#6B7770;
+  --a-ink:#16201B; --a-ink2:#46524B; --a-ink3:#5F6B64;
+  --a-care:#1D5C47; --a-care-tint:#E1EFE7; --a-on-care:#FFFFFF;
+  --a-stop:#B42318; --a-stop-tint:#FCEBE8;
+  --a-caution:#7A4A00; --a-caution-tint:#FFF0C7;
+
+  /* Direction B, Lamplight (dark by design, in both themes) */
+  --b-bg:#14110E; --b-surface:#1D1814; --b-sunk:#0E0C0A; --b-line:#352C25;
+  --b-ink:#F4ECE0; --b-ink2:#C9B9A6; --b-ink3:#A08D7A;
+  --b-lamp:#E8A13A; --b-lamp-tint:#3A2A14; --b-on-lamp:#1F1404;
+  --b-stop:#FF7B67; --b-stop-tint:#3D1712; --b-ok:#A3CF8E; --b-caution:#E8C46A;
+
+  /* Direction C, Pharmacy Label */
+  --c-paper:#FFFFFF; --c-sunk:#F2F2EF; --c-rule:#111111; --c-ink:#0B0B0B; --c-ink2:#3A3A3A; --c-ink3:#5C5C5C;
+  --c-green:#006B47; --c-green-tint:#E2F2EA; --c-red:#C8201A; --c-on-red:#FFFFFF;
+  --c-yellow:#FFD43B; --c-on-yellow:#0B0B0B; --c-blue:#1B4FB8;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --pg-bg:#101412; --pg-surface:#171D1A; --pg-ink:#EDF1EE; --pg-ink2:#B4BFB8; --pg-ink3:#8F9B94;
+    --pg-line:#2A332E; --pg-accent:#7CC9A5; --pg-accent-tint:#16302A; --pg-mark:#33280E; --pg-mark-ink:#F0C25A;
+    --hw-shadow:rgba(0,0,0,.5); --hw-edge:#3A3F3C;
+    --a-bg:#101412; --a-surface:#171D1A; --a-sunk:#0B0E0D; --a-line:#2A332E; --a-line-strong:#5F6D66;
+    --a-ink:#EDF1EE; --a-ink2:#B4BFB8; --a-ink3:#8F9B94;
+    --a-care:#7CC9A5; --a-care-tint:#16302A; --a-on-care:#0B1A13;
+    --a-stop:#FF8C7E; --a-stop-tint:#3A1814;
+    --a-caution:#F0C25A; --a-caution-tint:#33280E;
+    --c-paper:#0B0B0B; --c-sunk:#141414; --c-rule:#EDEDE8; --c-ink:#F5F5F0; --c-ink2:#C8C8C2; --c-ink3:#A0A09A;
+    --c-green:#4FD19A; --c-green-tint:#0F2A1F; --c-red:#FF5A4E; --c-on-red:#140303;
+    --c-yellow:#FFD43B; --c-on-yellow:#0B0B0B; --c-blue:#8DB0FF;
+  }
+}
+:root[data-theme="dark"]{
+  --pg-bg:#101412; --pg-surface:#171D1A; --pg-ink:#EDF1EE; --pg-ink2:#B4BFB8; --pg-ink3:#8F9B94;
+  --pg-line:#2A332E; --pg-accent:#7CC9A5; --pg-accent-tint:#16302A; --pg-mark:#33280E; --pg-mark-ink:#F0C25A;
+  --hw-shadow:rgba(0,0,0,.5); --hw-edge:#3A3F3C;
+  --a-bg:#101412; --a-surface:#171D1A; --a-sunk:#0B0E0D; --a-line:#2A332E; --a-line-strong:#5F6D66;
+  --a-ink:#EDF1EE; --a-ink2:#B4BFB8; --a-ink3:#8F9B94;
+  --a-care:#7CC9A5; --a-care-tint:#16302A; --a-on-care:#0B1A13;
+  --a-stop:#FF8C7E; --a-stop-tint:#3A1814;
+  --a-caution:#F0C25A; --a-caution-tint:#33280E;
+  --c-paper:#0B0B0B; --c-sunk:#141414; --c-rule:#EDEDE8; --c-ink:#F5F5F0; --c-ink2:#C8C8C2; --c-ink3:#A0A09A;
+  --c-green:#4FD19A; --c-green-tint:#0F2A1F; --c-red:#FF5A4E; --c-on-red:#140303;
+  --c-yellow:#FFD43B; --c-on-yellow:#0B0B0B; --c-blue:#8DB0FF;
+}
+
+/* ------------------------------------------------------------------ page */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--pg-bg);color:var(--pg-ink);
+  font:17px/1.5 "Atkinson Hyperlegible Next","Atkinson Hyperlegible",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--pg-accent)}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px}
+@media (min-width:720px){.wrap{padding:0 40px}}
+header.top{padding:40px 0 24px;border-bottom:1px solid var(--pg-line)}
+.toprow{display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.word{display:flex;gap:10px;align-items:center;font-weight:700;font-size:22px;letter-spacing:-.01em}
+.word svg{width:28px;height:28px;color:var(--pg-accent)}
+.theme{display:flex;border:1px solid var(--pg-line);border-radius:6px;overflow:hidden}
+.theme button{font:inherit;font-size:14px;background:none;border:0;color:var(--pg-ink2);padding:6px 12px;cursor:pointer}
+.theme button[aria-pressed="true"]{background:var(--pg-ink);color:var(--pg-bg)}
+h1{font-size:clamp(32px,6vw,52px);line-height:1.08;letter-spacing:-.02em;margin:32px 0 12px;max-width:22ch;text-wrap:balance}
+h2{text-wrap:balance}
+.lede{font-size:clamp(18px,2.2vw,21px);color:var(--pg-ink2);max-width:62ch;margin:0}
+.pick{margin:28px 0 0;padding:16px 20px;background:var(--pg-accent-tint);border-left:6px solid var(--pg-accent);max-width:820px}
+.pick b{color:var(--pg-ink)}
+nav.jump{display:flex;gap:8px 20px;flex-wrap:wrap;margin:20px 0 0;font-size:15px}
+section.dir{padding:64px 0 24px;border-bottom:1px solid var(--pg-line)}
+.dirhead{display:grid;gap:8px 40px;grid-template-columns:1fr}
+@media (min-width:900px){.dirhead{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}}
+.kicker{font-size:15px;font-weight:600;color:var(--pg-ink3)}
+.dirhead h2{font-size:clamp(28px,4.4vw,40px);line-height:1.1;margin:4px 0 10px;letter-spacing:-.015em}
+.dirhead p{margin:0 0 10px;color:var(--pg-ink2);max-width:60ch}
+.rec{display:inline-block;font-size:14px;font-weight:700;background:var(--pg-mark);color:var(--pg-mark-ink);padding:3px 10px;border-radius:4px;vertical-align:middle;margin-left:8px}
+dl.facts{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:15px}
+dl.facts dt{color:var(--pg-ink3);font-weight:600}
+dl.facts dd{margin:0;color:var(--pg-ink)}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 0}
+.sw{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--pg-ink2);min-width:0}
+.sw i{width:28px;height:28px;border-radius:4px;border:1px solid var(--pg-line);flex:none}
+.sw span{font-family:"Atkinson Hyperlegible Mono",ui-monospace,monospace;font-size:12.5px;overflow-wrap:anywhere}
+.mocks{display:grid;gap:40px 32px;grid-template-columns:minmax(0,1fr);margin-top:36px}
+@media (min-width:900px){.mocks{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}}
+figure{margin:0;min-width:0}
+figcaption{font-size:14px;color:var(--pg-ink3);margin:0 0 10px;font-weight:600}
+.verdict{display:grid;gap:12px 32px;grid-template-columns:minmax(0,1fr);margin-top:32px;font-size:16px}
+@media (min-width:900px){.verdict{grid-template-columns:1fr 1fr}}
+.verdict h3{font-size:16px;margin:0 0 4px}
+.verdict p{margin:0;color:var(--pg-ink2)}
+
+/* glyphs */
+.g{width:1em;height:1em;display:block}
+
+/* ---------------------------------------------- shared device hardware */
+.echo{background:var(--hw-bezel);border-radius:18px;padding:3.2% 3.2% 3.2%;box-shadow:0 18px 40px var(--hw-shadow),inset 0 0 0 1px var(--hw-edge);position:relative}
+.echo .screen{container-type:inline-size;aspect-ratio:16/10;overflow:hidden;position:relative;border-radius:4px}
+.simtag{display:inline-block;font-size:13px;font-weight:700;background:var(--pg-mark);color:var(--pg-mark-ink);padding:3px 10px;border-radius:999px;margin-bottom:10px}
+.phone{background:var(--hw-bezel);border-radius:40px;padding:10px;box-shadow:0 18px 40px var(--hw-shadow),inset 0 0 0 1px var(--hw-edge);max-width:300px;margin:0 auto}
+.phone .screen{container-type:inline-size;aspect-ratio:9/18.5;overflow:hidden;border-radius:31px;position:relative}
+.island{position:absolute;top:calc(var(--p) * 12);left:50%;transform:translateX(-50%);width:calc(var(--p) * 110);height:calc(var(--p) * 32);border-radius:99px;background:var(--hw-island);z-index:2}
+.screen{--u:calc(100cqw / 768);--p:calc(100cqw / 390)}
+.thumb{container-type:inline-size;aspect-ratio:3/2;overflow:hidden;position:relative;box-shadow:0 10px 30px var(--hw-shadow)}
+.thumb > .in{--t:calc(100cqw / 1500);position:absolute;inset:0}
+.board{container-type:inline-size;box-shadow:0 10px 30px var(--hw-shadow);overflow:hidden}
+
+/* =========================================================== A. Care Card */
+.A{font-family:"Atkinson Hyperlegible Next","Atkinson Hyperlegible",system-ui,sans-serif}
+.A .say-q{font-family:"Newsreader",Georgia,serif;font-style:italic}
+.A .screen{background:var(--a-surface);color:var(--a-ink)}
+.A .band{display:flex;align-items:center;gap:calc(var(--u) * 12);height:calc(var(--u) * 60);padding:0 calc(var(--u) * 32);
+  font-weight:700;font-size:calc(var(--u) * 22)}
+.A .band.stop{background:var(--a-stop-tint);color:var(--a-stop)}
+.A .band.ok{background:var(--a-care-tint);color:var(--a-care)}
+.A .band .g{width:calc(var(--u) * 26);height:calc(var(--u) * 26)}
+.A .band .who{margin-left:auto;font-weight:600;color:var(--a-ink2);font-size:calc(var(--u) * 18)}
+.A .body{padding:calc(var(--u) * 22) calc(var(--u) * 32) 0}
+.A .eyebrow{font-size:calc(var(--u) * 19);font-weight:600;color:var(--a-ink3);letter-spacing:.02em}
+.A .ttl{font-size:calc(var(--u) * 52);font-weight:700;line-height:1.05;letter-spacing:-.015em;margin:calc(var(--u) * 4) 0 calc(var(--u) * 6)}
+.A .sub{font-size:calc(var(--u) * 26);color:var(--a-ink2);margin:0}
+.A .rows{list-style:none;margin:calc(var(--u) * 18) 0 0;padding:0}
+.A .rows li{display:grid;grid-template-columns:calc(var(--u) * 34) 1fr;gap:calc(var(--u) * 14);padding:calc(var(--u) * 12) 0;border-top:1px solid var(--a-line);font-size:calc(var(--u) * 22);line-height:1.3}
+.A .mk{width:calc(var(--u) * 32);height:calc(var(--u) * 32);border-radius:50%;display:grid;place-items:center;color:var(--a-on-care);background:var(--a-care)}
+.A .mk.info{background:var(--a-sunk);color:var(--a-ink2)}
+.A .mk .g{width:62%;height:62%}
+.A .rows b{font-weight:700}
+.A .rows .q{display:block;color:var(--a-ink2);font-size:calc(var(--u) * 21)}
+.A .foot{position:absolute;left:calc(var(--u) * 32);right:calc(var(--u) * 32);bottom:calc(var(--u) * 18);display:flex;justify-content:space-between;gap:calc(var(--u) * 12);font-size:calc(var(--u) * 17);color:var(--a-ink3)}
+.A .foot .r{font-family:"Atkinson Hyperlegible Mono",ui-monospace,monospace}
+/* A phone */
+.A.phone .screen{background:var(--a-bg)}
+.A .stat{display:flex;justify-content:space-between;padding:calc(var(--p) * 18) calc(var(--p) * 30) 0;font-size:calc(var(--p) * 16);font-weight:700;color:var(--a-ink)}
+.A .apphd{padding:calc(var(--p) * 30) calc(var(--p) * 20) calc(var(--p) * 10);display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.A .apphd b{font-size:calc(var(--p) * 24)}
+.A .apphd small{font-size:calc(var(--p) * 13);font-weight:700;color:var(--a-caution);background:var(--a-caution-tint);padding:calc(var(--p) * 3) calc(var(--p) * 9);border-radius:99px}
+.A .bub{margin:calc(var(--p) * 8) calc(var(--p) * 16) calc(var(--p) * 12);font-size:calc(var(--p) * 19);line-height:1.35}
+.A .bub small{display:block;font-family:"Atkinson Hyperlegible Next",sans-serif;font-style:normal;font-size:calc(var(--p) * 14);font-weight:600;color:var(--a-ink3);margin-bottom:calc(var(--p) * 2)}
+.A .pcard{margin:0 calc(var(--p) * 12);background:var(--a-surface);border-radius:calc(var(--p) * 14);overflow:hidden;border:1px solid var(--a-line)}
+.A .pcard .pband{display:flex;gap:calc(var(--p) * 8);align-items:center;padding:calc(var(--p) * 10) calc(var(--p) * 16);background:var(--a-care-tint);color:var(--a-care);font-weight:700;font-size:calc(var(--p) * 16)}
+.A .pcard .pband .g{width:calc(var(--p) * 18);height:calc(var(--p) * 18)}
+.A .pcard h4{margin:0;padding:calc(var(--p) * 12) calc(var(--p) * 16) calc(var(--p) * 4);font-size:calc(var(--p) * 25);line-height:1.12}
+.A .pcard ul{list-style:none;margin:0;padding:0 calc(var(--p) * 16) calc(var(--p) * 6)}
+.A .pcard li{display:grid;grid-template-columns:calc(var(--p) * 24) 1fr;gap:calc(var(--p) * 10);padding:calc(var(--p) * 10) 0;border-top:1px solid var(--a-line);font-size:calc(var(--p) * 16);line-height:1.3}
+.A .pcard li .mk{width:calc(var(--p) * 22);height:calc(var(--p) * 22)}
+.A .pcard li b{display:block;font-size:calc(var(--p) * 14);color:var(--a-ink3);font-weight:600}
+.A .pcard .pf{padding:calc(var(--p) * 10) calc(var(--p) * 16);font-size:calc(var(--p) * 13);color:var(--a-ink3);border-top:1px solid var(--a-line);font-family:"Atkinson Hyperlegible Mono",monospace}
+.A .speak{position:absolute;left:calc(var(--p) * 12);right:calc(var(--p) * 12);bottom:calc(var(--p) * 22);display:flex;gap:calc(var(--p) * 8)}
+.A .speak span{flex:1;border:1px solid var(--a-line-strong);border-radius:calc(var(--p) * 12);padding:calc(var(--p) * 12) calc(var(--p) * 14);font-size:calc(var(--p) * 16);color:var(--a-ink3);background:var(--a-surface)}
+.A .speak i{font-style:normal;background:var(--a-care);color:var(--a-on-care);border-radius:calc(var(--p) * 12);padding:calc(var(--p) * 12) calc(var(--p) * 16);font-weight:700;font-size:calc(var(--p) * 16)}
+/* A board */
+.A.board{background:var(--a-bg);color:var(--a-ink)}
+.A .bhd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 24px;border-bottom:1px solid var(--a-line);background:var(--a-surface)}
+.A .bhd b{font-size:19px}
+.A .bhd span{color:var(--a-ink3);font-size:15px}
+.A .bgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+@container (min-width:620px){.A .bgrid{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}}
+.A .col{padding:20px 24px}
+.A .col + .col{border-top:1px solid var(--a-line)}
+@container (min-width:620px){.A .col + .col{border-top:0;border-left:1px solid var(--a-line)}}
+.A h5{font-size:15px;font-weight:700;margin:0 0 8px;color:var(--a-ink2)}
+.A .ppl{list-style:none;margin:0 0 18px;padding:0}
+.A .ppl li{display:grid;grid-template-columns:36px 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--a-line);font-size:15.5px;line-height:1.35}
+.A .ppl li:first-child{border-top:0}
+.A .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--a-sunk);font-weight:700;font-size:15px;color:var(--a-ink)}
+.A .av.say{background:var(--a-care);color:var(--a-on-care)}
+.A .ppl small{display:block;color:var(--a-ink3);font-size:14px}
+.A .ppl em{font-style:normal;color:var(--a-care);font-weight:600}
+.A .rule{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--a-line);font-size:15.5px}
+.A .rule b{font-size:17px}
+.A .rule small{display:block;color:var(--a-ink3);font-size:14px}
+.A .rule .v{font-weight:700;text-align:right;white-space:nowrap}
+.A .note{padding:12px 0 12px 14px;border-left:4px solid var(--a-line);margin:0 0 12px;font-size:15.5px;line-height:1.4}
+.A .note.flag{border-left-color:var(--a-caution)}
+.A .note.stop{border-left-color:var(--a-stop)}
+.A .note small{display:block;color:var(--a-ink3);font-size:14px;margin-bottom:2px}
+.A .note .tagf{display:inline-block;margin-top:6px;font-size:13.5px;font-weight:700;color:var(--a-caution);background:var(--a-caution-tint);padding:2px 8px;border-radius:4px}
+/* A thumbnail */
+.A.thumb{background:var(--a-bg);color:var(--a-ink)}
+.A .tw{position:absolute;left:calc(var(--t) * 80);top:calc(var(--t) * 72);display:flex;align-items:center;gap:calc(var(--t) * 14);font-weight:700;font-size:calc(var(--t) * 44)}
+.A .tw svg{width:calc(var(--t) * 52);height:calc(var(--t) * 52);color:var(--a-care)}
+.A .th{position:absolute;left:calc(var(--t) * 80);top:calc(var(--t) * 170);right:calc(var(--t) * 80)}
+.A .th h6{margin:0;font-size:calc(var(--t) * 156);line-height:.98;letter-spacing:-.025em;font-weight:700}
+.A .th p{margin:calc(var(--t) * 56) 0 0;width:calc(var(--t) * 560);font-size:calc(var(--t) * 46);line-height:1.3;color:var(--a-ink2)}
+.A .tdev{position:absolute;right:calc(var(--t) * 70);top:calc(var(--t) * 370);width:calc(var(--t) * 740)}
+.A .tdev .echo{border-radius:calc(var(--t) * 30)}
+.A .tsim{position:absolute;left:calc(var(--t) * 80);bottom:calc(var(--t) * 64);font-size:calc(var(--t) * 26);font-weight:700;color:var(--a-caution);background:var(--a-caution-tint);padding:calc(var(--t) * 6) calc(var(--t) * 16);border-radius:99px}
+
+/* =========================================================== B. Lamplight */
+.B{font-family:"Public Sans",system-ui,sans-serif;color:var(--b-ink)}
+.B .serif{font-family:"Source Serif 4",Georgia,serif}
+.B .screen{background:var(--b-bg);color:var(--b-ink)}
+.B .bl{position:absolute;left:calc(var(--u) * 40);top:calc(var(--u) * 40);width:calc(var(--u) * 390)}
+.B .stopline{display:flex;align-items:center;gap:calc(var(--u) * 12);font-size:calc(var(--u) * 19);font-weight:700;color:var(--b-stop)}
+.B .stopline::before{content:"";width:calc(var(--u) * 36);height:calc(var(--u) * 4);background:var(--b-stop)}
+.B .bt{font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:calc(var(--u) * 58);line-height:1.02;letter-spacing:-.02em;margin:calc(var(--u) * 18) 0 calc(var(--u) * 14)}
+.B .bs{font-family:"Source Serif 4",Georgia,serif;font-style:italic;font-size:calc(var(--u) * 28);color:var(--b-ink2);margin:0}
+.B .bq{margin:calc(var(--u) * 30) 0 0;font-size:calc(var(--u) * 19);line-height:1.4;color:var(--b-ink3)}
+.B .br{position:absolute;right:calc(var(--u) * 36);top:calc(var(--u) * 40);bottom:calc(var(--u) * 64);width:calc(var(--u) * 270);border-left:1px solid var(--b-line);padding-left:calc(var(--u) * 28);display:flex;flex-direction:column;gap:calc(var(--u) * 26)}
+.B .big{font-family:"Source Serif 4",Georgia,serif;font-size:calc(var(--u) * 76);line-height:.9;color:var(--b-lamp);font-weight:400;letter-spacing:-.02em}
+.B .lab{font-size:calc(var(--u) * 19);line-height:1.3;color:var(--b-ink2)}
+.B .lab b{display:block;color:var(--b-ink);font-weight:600;font-size:calc(var(--u) * 21)}
+.B .bf{position:absolute;left:calc(var(--u) * 40);right:calc(var(--u) * 40);bottom:calc(var(--u) * 22);display:flex;justify-content:space-between;font-size:calc(var(--u) * 16);color:var(--b-ink3)}
+/* B phone */
+.B.phone .screen{background:var(--b-bg)}
+.B .stat{display:flex;justify-content:space-between;padding:calc(var(--p) * 18) calc(var(--p) * 30) 0;font-size:calc(var(--p) * 16);font-weight:700}
+.B .pt{padding:calc(var(--p) * 36) calc(var(--p) * 22) 0}
+.B .pt small{font-size:calc(var(--p) * 14);color:var(--b-lamp);font-weight:700}
+.B .pt h4{font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:calc(var(--p) * 34);line-height:1.05;margin:calc(var(--p) * 6) 0 calc(var(--p) * 4)}
+.B .pt p{margin:0;color:var(--b-ink2);font-size:calc(var(--p) * 16);font-family:"Source Serif 4",Georgia,serif;font-style:italic}
+.B .steps{list-style:none;margin:calc(var(--p) * 18) calc(var(--p) * 22) 0;padding:0;counter-reset:s}
+.B .steps li{position:relative;padding:calc(var(--p) * 10) 0 calc(var(--p) * 10) calc(var(--p) * 34);border-top:1px solid var(--b-line);font-size:calc(var(--p) * 16);line-height:1.3;color:var(--b-ink)}
+.B .steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:calc(var(--p) * 10);width:calc(var(--p) * 22);height:calc(var(--p) * 22);border-radius:50%;border:1px solid var(--b-lamp);color:var(--b-lamp);font-size:calc(var(--p) * 13);display:grid;place-items:center;font-weight:700}
+.B .steps small{display:block;color:var(--b-ink3);font-size:calc(var(--p) * 13.5)}
+.B .pf{position:absolute;left:calc(var(--p) * 22);right:calc(var(--p) * 22);bottom:calc(var(--p) * 24);font-size:calc(var(--p) * 13);color:var(--b-ink3);display:flex;justify-content:space-between}
+.B .pf b{color:var(--b-caution)}
+/* B board */
+.B.board{background:var(--b-bg)}
+.B .bhd{padding:22px 26px 14px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.B .bhd b{font-family:"Source Serif 4",Georgia,serif;font-size:26px;font-weight:600}
+.B .bhd span{color:var(--b-ink3);font-size:14px}
+.B .bhead{padding:0 26px;font-family:"Source Serif 4",Georgia,serif;font-style:italic;color:var(--b-ink2);font-size:18px;margin:0 0 6px}
+.B .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--b-line);border-top:1px solid var(--b-line);border-bottom:1px solid var(--b-line)}
+@container (min-width:620px){.B .tiles{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.B .tile{background:var(--b-bg);padding:16px 18px 18px}
+.B .tile .n{font-family:"Source Serif 4",Georgia,serif;font-size:22px;font-weight:600}
+.B .tile small{display:block;color:var(--b-ink3);font-size:13.5px;line-height:1.35;margin-top:2px}
+.B .tile em{display:block;font-style:normal;color:var(--b-lamp);font-size:13.5px;margin-top:8px;line-height:1.35}
+.B .feed{padding:16px 26px 22px}
+.B .entry{display:grid;grid-template-columns:64px 1fr;gap:14px;padding:12px 0;border-top:1px solid var(--b-line);font-size:15.5px;line-height:1.4}
+.B .entry:first-child{border-top:0}
+.B .entry time{font-family:"Source Serif 4",Georgia,serif;color:var(--b-lamp);font-size:18px}
+.B .entry small{display:block;color:var(--b-ink3);font-size:13.5px}
+.B .entry .x{color:var(--b-stop);font-weight:700}
+/* B thumbnail */
+.B.thumb{background:var(--b-bg)}
+.B .tw{position:absolute;left:calc(var(--t) * 90);top:calc(var(--t) * 80);font-family:"Source Serif 4",Georgia,serif;font-size:calc(var(--t) * 46);font-weight:600;color:var(--b-lamp)}
+.B .th{position:absolute;left:calc(var(--t) * 90);top:calc(var(--t) * 170);right:calc(var(--t) * 80)}
+.B .th h6{margin:0;font-family:"Source Serif 4",Georgia,serif;font-weight:600;font-size:calc(var(--t) * 164);line-height:.98;letter-spacing:-.025em}
+.B .th p{margin:calc(var(--t) * 56) 0 0;width:calc(var(--t) * 540);font-family:"Source Serif 4",Georgia,serif;font-style:italic;font-size:calc(var(--t) * 50);line-height:1.3;color:var(--b-ink2)}
+.B .tdev{position:absolute;right:calc(var(--t) * 70);top:calc(var(--t) * 370);width:calc(var(--t) * 740)}
+.B .tdev .echo{border-radius:calc(var(--t) * 30)}
+.B .tsim{position:absolute;left:calc(var(--t) * 90);bottom:calc(var(--t) * 70);font-size:calc(var(--t) * 26);color:var(--b-caution);font-weight:700}
+
+/* ======================================================= C. Pharmacy Label */
+.C{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;color:var(--c-ink)}
+.C .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.C .screen{background:var(--c-paper);color:var(--c-ink)}
+.C .lbl{position:absolute;inset:calc(var(--u) * 18);border:calc(var(--u) * 3) solid var(--c-rule);display:flex;flex-direction:column}
+.C .lh{display:flex;justify-content:space-between;align-items:center;padding:calc(var(--u) * 10) calc(var(--u) * 18);background:var(--c-rule);color:var(--c-paper);font-weight:700;font-size:calc(var(--u) * 19);letter-spacing:.04em;text-transform:uppercase}
+.C .lb{padding:calc(var(--u) * 14) calc(var(--u) * 18) 0;flex:1;position:relative}
+.C .ln{font-size:calc(var(--u) * 18);color:var(--c-ink2);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.C .lt{font-size:calc(var(--u) * 60);font-weight:700;line-height:.98;text-transform:uppercase;margin:calc(var(--u) * 6) 0 calc(var(--u) * 14);letter-spacing:-.005em}
+.C .stick{display:inline-block;font-weight:700;text-transform:uppercase;font-size:calc(var(--u) * 21);padding:calc(var(--u) * 7) calc(var(--u) * 14);letter-spacing:.03em}
+.C .stick.red{background:var(--c-red);color:var(--c-on-red)}
+.C .stick.yel{background:var(--c-yellow);color:var(--c-on-yellow)}
+.C table{width:100%;border-collapse:collapse;margin-top:calc(var(--u) * 16);font-size:calc(var(--u) * 21)}
+.C td{border-top:calc(var(--u) * 2) solid var(--c-rule);padding:calc(var(--u) * 8) calc(var(--u) * 8) calc(var(--u) * 8) 0;vertical-align:top}
+.C td:first-child{width:22%;font-weight:700;text-transform:uppercase;font-size:calc(var(--u) * 17);letter-spacing:.05em;padding-top:calc(var(--u) * 11)}
+.C td .mono{font-weight:600}
+.C .lf{display:flex;justify-content:space-between;padding:calc(var(--u) * 8) calc(var(--u) * 18);border-top:calc(var(--u) * 2) solid var(--c-rule);font-size:calc(var(--u) * 15);color:var(--c-ink2)}
+/* C phone */
+.C.phone .screen{background:var(--c-sunk)}
+.C .stat{display:flex;justify-content:space-between;padding:calc(var(--p) * 18) calc(var(--p) * 30) 0;font-size:calc(var(--p) * 16);font-weight:700}
+.C .ph{margin:calc(var(--p) * 30) calc(var(--p) * 14) 0;background:var(--c-paper);border:calc(var(--p) * 2) solid var(--c-rule)}
+.C .ph .lh{font-size:calc(var(--p) * 14);padding:calc(var(--p) * 8) calc(var(--p) * 12)}
+.C .ph h4{margin:0;padding:calc(var(--p) * 12) calc(var(--p) * 12) calc(var(--p) * 8);font-size:calc(var(--p) * 30);line-height:1;text-transform:uppercase}
+.C .ph table{margin:0;font-size:calc(var(--p) * 15)}
+.C .ph td{border-top:calc(var(--p) * 1.5) solid var(--c-rule);padding:calc(var(--p) * 8) calc(var(--p) * 10)}
+.C .ph td:first-child{font-size:calc(var(--p) * 12.5);width:30%;padding-top:calc(var(--p) * 10)}
+.C .ph .lf{font-size:calc(var(--p) * 12);padding:calc(var(--p) * 8) calc(var(--p) * 12);border-top-width:calc(var(--p) * 1.5)}
+.C .ph .stick{font-size:calc(var(--p) * 13);padding:calc(var(--p) * 4) calc(var(--p) * 8);margin:0 calc(var(--p) * 12) calc(var(--p) * 10)}
+.C .psim{position:absolute;left:calc(var(--p) * 14);bottom:calc(var(--p) * 22);font-size:calc(var(--p) * 13);font-weight:700;background:var(--c-yellow);color:var(--c-on-yellow);padding:calc(var(--p) * 4) calc(var(--p) * 8);text-transform:uppercase;letter-spacing:.04em}
+/* C board */
+.C.board{background:var(--c-paper);border:3px solid var(--c-rule)}
+.C .bhd{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 18px;background:var(--c-rule);color:var(--c-paper);font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:15px}
+.C .bcols{display:grid;grid-template-columns:minmax(0,1fr)}
+@container (min-width:620px){.C .bcols{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.C .bc{padding:14px 18px 18px}
+.C .bc + .bc{border-top:2px solid var(--c-rule)}
+@container (min-width:620px){.C .bc + .bc{border-top:0;border-left:2px solid var(--c-rule)}}
+.C .bc h5{margin:0 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:.06em}
+.C .bc table{margin:0;font-size:15.5px}
+.C .bc td{border-top:1.5px solid var(--c-rule);padding:8px 8px 8px 0}
+.C .bc td:first-child{font-size:13.5px;width:30%;padding-top:10px}
+.C .bc .stick{font-size:12.5px;padding:2px 6px;margin-top:4px}
+/* C thumbnail */
+.C.thumb{background:var(--c-paper)}
+.C .tl{position:absolute;left:calc(var(--t) * 70);top:calc(var(--t) * 70);bottom:calc(var(--t) * 70);width:calc(var(--t) * 760);border:calc(var(--t) * 6) solid var(--c-rule);display:flex;flex-direction:column}
+.C .tl .lh{font-size:calc(var(--t) * 30);padding:calc(var(--t) * 16) calc(var(--t) * 26)}
+.C .tl h6{margin:0;padding:calc(var(--t) * 34) calc(var(--t) * 26) 0;font-size:calc(var(--t) * 136);line-height:.92;text-transform:uppercase;font-weight:700}
+.C .tl .stick{margin:calc(var(--t) * 28) calc(var(--t) * 26) 0;font-size:calc(var(--t) * 34);padding:calc(var(--t) * 10) calc(var(--t) * 20);align-self:flex-start}
+.C .tl .lf{margin-top:auto;font-size:calc(var(--t) * 24);padding:calc(var(--t) * 14) calc(var(--t) * 26);border-top-width:calc(var(--t) * 4)}
+.C .tdev{position:absolute;right:calc(var(--t) * 50);top:calc(var(--t) * 300);width:calc(var(--t) * 600)}
+.C .tl table{margin:calc(var(--t) * 36) 0 0;font-size:calc(var(--t) * 40)}
+.C .tl td{border-top:calc(var(--t) * 4) solid var(--c-rule);padding:calc(var(--t) * 14) calc(var(--t) * 26)}
+.C .tl td:first-child{font-size:calc(var(--t) * 28);width:32%;padding-top:calc(var(--t) * 22)}
+.C .tdev .echo{border-radius:calc(var(--t) * 26)}
+
+/* compare table */
+.cmp{width:100%;border-collapse:collapse;font-size:15.5px;margin-top:20px}
+.cmp th,.cmp td{text-align:left;vertical-align:top;padding:12px 12px 12px 0;border-top:1px solid var(--pg-line)}
+.cmp th{font-weight:700;color:var(--pg-ink2);font-size:14px}
+.cmp td:first-child{font-weight:600;width:22%}
+.cmpwrap{overflow-x:auto}
+@media (max-width:620px){
+  .cmp thead{display:none}
+  .cmp tr{display:block;padding:10px 0;border-top:1px solid var(--pg-line)}
+  .cmp td{display:block;border:0;padding:3px 0}
+  .cmp td:not(:first-child)::before{content:attr(data-h) ": ";font-weight:700;color:var(--pg-ink3)}
+}
+footer{padding:40px 0 64px;color:var(--pg-ink3);font-size:14px}
+@media (prefers-reduced-motion:no-preference){.theme button{transition:background .16s ease-out,color .16s ease-out}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="g-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="g-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M8 8l8 8M16 8l-8 8" stroke="var(--a-stop-tint)" stroke-width="2.6" stroke-linecap="round"/></symbol>
+  <symbol id="g-done" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M7 12.4l3.2 3.2L17 8.8" fill="none" stroke="var(--a-care-tint)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="g-info" viewBox="0 0 24 24"><path d="M12 10.5v7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="12" cy="6.5" r="1.8" fill="currentColor"/></symbol>
+  <symbol id="g-arch" viewBox="0 0 32 32"><path d="M7 27V14a9 9 0 0 1 18 0v13" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M4 27h24" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M16 26c-3-2-3.6-4.6-1.6-7.4.4 1.6 1.2 2.4 2.2 2.8-.6-2.6.4-4.6 2.4-6-.2 2.4.8 3.4 1.6 4.6.8 1.2 1 2.6.4 3.8-.8 1.6-2.6 2.6-5 2.2z" fill="currentColor"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="wrap">
+    <div class="toprow">
+      <div class="word"><svg aria-hidden="true"><use href="#g-arch"/></svg>hearth</div>
+      <div class="theme" role="group" aria-label="Theme">
+        <button type="button" data-set="auto" aria-pressed="true">Auto</button>
+        <button type="button" data-set="light" aria-pressed="false">Light</button>
+        <button type="button" data-set="dark" aria-pressed="false">Dark</button>
+      </div>
+    </div>
+    <h1>Three ways Hearth could look</h1>
+    <p class="lede">Each direction is drawn on the same four real screens: Rose's refused dose on the kitchen Echo Show, Ada's "sort it out" on her phone, the household board, and the Devpost thumbnail. The words are Hearth's own answers from the filmed scenes. Switch the theme above to see each direction at night.</p>
+    <p class="pick"><b>Recommended: A, Care Card.</b> Daylight, a typeface built for low-vision readers, one green for "done" and one red that only ever means "Hearth refused". It is the calmest for a worried family, the most legible on a kitchen counter, and it will not look like any of the dark developer consoles in the Alexa+ gallery. <a href="#pick">Why, in full</a>.</p>
+    <nav class="jump" aria-label="Directions"><a href="#a">A. Care Card</a><a href="#b">B. Lamplight</a><a href="#c">C. Pharmacy Label</a><a href="#pick">Compare and pick</a></nav>
+  </div>
+</header>
+
+<main>
+<!-- =============================================================== A -->
+<section class="dir" id="a">
+  <div class="wrap">
+    <div class="dirhead">
+      <div>
+        <div class="kicker">Direction A <span class="rec">Recommended</span></div>
+        <h2>Care Card</h2>
+        <p>A hospital's calm, without the hospital. Light neutral paper, dark green ink for anything done, and a single red band reserved for a refusal. Every card opens with a status word and a glyph, so nobody has to read colour.</p>
+        <p>The quoted words a person said are set in a serif italic, so Rose's daughter can see at a glance which line came from Dr. Patel's letter and which from Hearth.</p>
+      </div>
+      <dl class="facts">
+        <dt>Type</dt><dd>Atkinson Hyperlegible Next (Braille Institute), Newsreader italic for speech, Atkinson Mono for receipts</dd>
+        <dt>Feels like</dt><dd>NHS care cards, Apple Health Medications, GOV.UK warning text</dd>
+        <dt>Signature</dt><dd>The status band: Stopped, Done, Needs attention, For you</dd>
+        <dt>Night</dt><dd>A full dark twin from the same hues (switch theme)</dd>
+        <dt>Risk</dt><dd>Plain. It wins on calm and legibility, not on spectacle, so the video has to carry the emotion.</dd>
+      </dl>
+    </div>
+    <div class="swatches" data-surface="--a-surface">
+      <div class="sw"><i style="background:var(--a-bg)"></i><span data-var="--a-bg">bg</span></div>
+      <div class="sw"><i style="background:var(--a-surface)"></i><span data-var="--a-surface">surface</span></div>
+      <div class="sw"><i style="background:var(--a-ink)"></i><span data-var="--a-ink" data-cr>ink</span></div>
+      <div class="sw"><i style="background:var(--a-ink3)"></i><span data-var="--a-ink3" data-cr>ink-3</span></div>
+      <div class="sw"><i style="background:var(--a-care)"></i><span data-var="--a-care" data-cr>care</span></div>
+      <div class="sw"><i style="background:var(--a-stop)"></i><span data-var="--a-stop" data-cr>stop</span></div>
+      <div class="sw"><i style="background:var(--a-caution)"></i><span data-var="--a-caution" data-cr>caution</span></div>
+    </div>
+
+    <div class="mocks">
+      <figure>
+        <figcaption>Kitchen Echo Show, 3:07 pm. Rose: "Alexa, I'm just going to take my blood thinner."</figcaption>
+        <span class="simtag">Simulated Alexa+ · Kitchen Echo Show</span>
+        <div class="echo A"><div class="screen">
+          <div class="band stop"><svg class="g" aria-hidden="true"><use href="#g-stop"/></svg>Stopped<span class="who">Mom · Warfarin</span></div>
+          <div class="body">
+            <div class="ttl">Already taken today</div>
+            <p class="sub">Not another until tomorrow.</p>
+            <ul class="rows">
+              <li><span class="mk"><svg class="g"><use href="#g-check"/></svg></span><span><b>Grace gave it</b> at 9:10 this morning</span></li>
+              <li><span class="mk info"><svg class="g"><use href="#g-info"/></svg></span><span><b>Ada's rule:</b> once a day, set 12 days ago<span class="q say-q">"Dr. Patel says Mom takes one warfarin a day, at nine in the morning."</span></span></li>
+            </ul>
+          </div>
+          <div class="foot"><span>Stopped by Hearth and recorded</span><span class="r">Record #1 · 08d28d7a</span></div>
+        </div></div>
+      </figure>
+
+      <figure>
+        <figcaption>Ada's Alexa app: "Mom's cardiology moved to Thursday at 10. Sort it out."</figcaption>
+        <div class="phone A"><div class="screen">
+          <div class="island"></div>
+          <div class="stat"><span>3:21</span><span>Ada</span></div>
+          <div class="apphd"><b>Alexa</b><small>Simulated</small></div>
+          <p class="bub say-q"><small>You said</small>"Mom's cardiology moved to Thursday at 10. Sort it out."</p>
+          <div class="pcard">
+            <div class="pband"><svg class="g" aria-hidden="true"><use href="#g-done"/></svg>Done, in one request</div>
+            <h4>Mom's cardiology, Thursday 10:00 am</h4>
+            <ul>
+              <li><span class="mk"><svg class="g"><use href="#g-check"/></svg></span><span><b>Calendar</b>Moved from Tuesday 2:00 pm</span></li>
+              <li><span class="mk"><svg class="g"><use href="#g-check"/></svg></span><span><b>Who takes her</b>Tom. Tom does Thursdays.</span></li>
+              <li><span class="mk"><svg class="g"><use href="#g-check"/></svg></span><span><b>Ride, sandbox</b>Tuesday cancelled, 9:15 am booked</span></li>
+              <li><span class="mk"><svg class="g"><use href="#g-check"/></svg></span><span><b>Family board</b>Note to Tom and Grace, sent to Tom's phone</span></li>
+            </ul>
+            <div class="pf">Record #5 · 54c00b2b</div>
+          </div>
+          <div class="speak"><span>Say something to Alexa</span><i>Speak</i></div>
+        </div></div>
+      </figure>
+
+      <figure>
+        <figcaption>The household board (/console), after Grace's shift</figcaption>
+        <div class="board A">
+          <div class="bhd"><b>Rose's house</b><span>Wednesday afternoon</span></div>
+          <div class="bgrid">
+            <div class="col">
+              <h5>The family</h5>
+              <ul class="ppl">
+                <li><span class="av">R</span><span><b>Rose</b>, Mom, 84<small>Lives here. Has the say over her mealtimes.</small></span></li>
+                <li><span class="av say">A</span><span><b>Ada</b>, daughter<small>Health care proxy. <em>Has the say over medication, food and drink, appointments and spending.</em></small></span></li>
+                <li><span class="av">T</span><span><b>Tom</b>, son, two states away<small>Does Thursdays. Has the say over rides.</small></span></li>
+                <li><span class="av">G</span><span><b>Grace</b>, aide<small>Weekday mornings. No say of her own.</small></span></li>
+              </ul>
+            </div>
+            <div class="col">
+              <h5>Family board</h5>
+              <div class="note flag"><small>Grace, 2:40 pm, handover</small>Mom ate half her lunch, she was a bit dizzy after her walk, and we're nearly out of Ensure.<br><span class="tagf">Flagged for Ada, pinned two days</span></div>
+              <div class="note stop"><small>Hearth, 3:07 pm</small>Mom went to take a second warfarin and I stopped her. Grace gave it at 9:10.</div>
+              <div class="note"><small>Hearth, 3:21 pm, for Tom and Grace</small>Cardiology is Thursday at 10. Tom is taking Mom; the ride is at 9:15.</div>
+              <h5 style="margin-top:20px">Standing now</h5>
+              <div class="rule"><span><b>Warfarin</b><small>Ada, 12 days ago, from Dr. Patel's letter</small></span><span class="v">Once a day, 9 am</span></div>
+              <div class="rule"><span><b>Coffee</b><small>Ada has the say. Tom said six.</small></span><span class="v">Until 3 pm</span></div>
+            </div>
+          </div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption>Devpost thumbnail, 3:2 (shown near gallery size)</figcaption>
+        <div class="thumb A"><div class="in">
+          <div class="tw"><svg aria-hidden="true"><use href="#g-arch"/></svg>hearth</div>
+          <div class="th"><h6>Hold on, Rose.</h6><p>Alexa+ stops a second blood thinner, and tells the family why.</p></div>
+          <div class="tdev"><div class="echo A"><div class="screen">
+            <div class="band stop"><svg class="g" aria-hidden="true"><use href="#g-stop"/></svg>Stopped<span class="who">Mom · Warfarin</span></div>
+            <div class="body"><div class="ttl">Already taken today</div><p class="sub">Not another until tomorrow.</p>
+              <ul class="rows"><li><span class="mk"><svg class="g"><use href="#g-check"/></svg></span><span><b>Grace gave it</b> at 9:10 this morning</span></li></ul></div>
+          </div></div></div>
+          <div class="tsim">Simulated Alexa+</div>
+        </div></div>
+      </figure>
+    </div>
+
+    <div class="verdict">
+      <div><h3>Why it fits</h3><p>Families in this situation are tired and anxious. A light, ordered screen with big plain words lowers the temperature; the one red band does the alarming. Atkinson was made for exactly the eyes that will read it.</p></div>
+      <div><h3>What Phase 2 changes</h3><p>All four palettes collapse into one. The traffic log becomes an "Under the hood" drawer. Ada's device becomes a portrait phone. Card content is untouched; only the presentation of tone, type and spacing changes.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== B -->
+<section class="dir" id="b">
+  <div class="wrap">
+    <div class="dirhead">
+      <div>
+        <div class="kicker">Direction B</div>
+        <h2>Lamplight</h2>
+        <p>The kitchen in the evening. A warm dark screen like a bedside lamp, a serif that reads like a handwritten family note, and one amber for "this happened". The fact that matters most, the time Grace gave the dose, is set as large as a clock.</p>
+        <p>This is the closest to what Hearth has now, grown up: the warmth stays, the developer chrome and the cyan go.</p>
+      </div>
+      <dl class="facts">
+        <dt>Type</dt><dd>Source Serif 4 for headlines and times, Public Sans for everything small</dd>
+        <dt>Feels like</dt><dd>Nest Hub ambient mode, a printed family letter, a good kitchen clock</dd>
+        <dt>Signature</dt><dd>The big time: "9:10" in amber, the who beneath it</dd>
+        <dt>Night</dt><dd>Dark by design in both themes; the Echo Show dims at night</dd>
+        <dt>Risk</dt><dd>Dark and warm brown is what half the field will ship, and dark UIs lose detail in YouTube compression.</dd>
+      </dl>
+    </div>
+    <div class="swatches" data-surface="--b-bg">
+      <div class="sw"><i style="background:var(--b-bg)"></i><span data-var="--b-bg">bg</span></div>
+      <div class="sw"><i style="background:var(--b-surface)"></i><span data-var="--b-surface">surface</span></div>
+      <div class="sw"><i style="background:var(--b-ink)"></i><span data-var="--b-ink" data-cr>ink</span></div>
+      <div class="sw"><i style="background:var(--b-ink3)"></i><span data-var="--b-ink3" data-cr>ink-3</span></div>
+      <div class="sw"><i style="background:var(--b-lamp)"></i><span data-var="--b-lamp" data-cr>lamp</span></div>
+      <div class="sw"><i style="background:var(--b-stop)"></i><span data-var="--b-stop" data-cr>stop</span></div>
+      <div class="sw"><i style="background:var(--b-ok)"></i><span data-var="--b-ok" data-cr>ok</span></div>
+    </div>
+
+    <div class="mocks">
+      <figure>
+        <figcaption>Kitchen Echo Show, 3:07 pm. Rose: "Alexa, I'm just going to take my blood thinner."</figcaption>
+        <span class="simtag">Simulated Alexa+ · Kitchen Echo Show</span>
+        <div class="echo B"><div class="screen">
+          <div class="bl">
+            <div class="stopline">Stopped · Mom's warfarin</div>
+            <div class="bt">Already taken today.</div>
+            <p class="bs">Not another until tomorrow.</p>
+            <p class="bq">"Dr. Patel says Mom takes one warfarin a day, at nine in the morning."</p>
+          </div>
+          <div class="br">
+            <div><div class="big">9:10</div><div class="lab"><b>Grace gave it</b>this morning</div></div>
+            <div class="lab"><b>Once a day</b>Ada's rule, set 12 days ago</div>
+          </div>
+          <div class="bf"><span>Stopped by Hearth and recorded</span><span>Record #1</span></div>
+        </div></div>
+      </figure>
+
+      <figure>
+        <figcaption>Ada's Alexa app: "Mom's cardiology moved to Thursday at 10. Sort it out."</figcaption>
+        <div class="phone B"><div class="screen">
+          <div class="island"></div>
+          <div class="stat"><span>3:21</span><span>Ada</span></div>
+          <div class="pt"><small>Sorted, in one request</small><h4>Cardiology, Thursday at ten.</h4><p>Moved from Tuesday at two.</p></div>
+          <ol class="steps">
+            <li>Calendar moved<small>Thursday 10:00 am</small></li>
+            <li>Tom is taking Mom<small>Tom does Thursdays</small></li>
+            <li>Tuesday's ride cancelled<small>Sandbox ride provider</small></li>
+            <li>New ride at 9:15 am<small>45 minutes before</small></li>
+            <li>Note to Tom and Grace<small>On the board, and on Tom's phone</small></li>
+          </ol>
+          <div class="pf"><b>Simulated Alexa+</b><span>Record #5</span></div>
+        </div></div>
+      </figure>
+
+      <figure>
+        <figcaption>The household board (/console), after Grace's shift</figcaption>
+        <div class="board B">
+          <div class="bhd"><b>Rose's house</b><span>Wednesday, 3:21 pm</span></div>
+          <p class="bhead">Who has the say</p>
+          <div class="tiles">
+            <div class="tile"><div class="n">Rose</div><small>Mom, 84. Lives here.</small><em>Her mealtimes</em></div>
+            <div class="tile"><div class="n">Ada</div><small>Daughter. Health care proxy.</small><em>Medication, food, appointments, spending</em></div>
+            <div class="tile"><div class="n">Tom</div><small>Son, two states away.</small><em>Rides. Does Thursdays.</em></div>
+            <div class="tile"><div class="n">Grace</div><small>Aide, weekday mornings.</small><em>No say of her own</em></div>
+          </div>
+          <div class="feed">
+            <div class="entry"><time>2:40</time><span>Grace handed over: Mom ate half her lunch, a bit dizzy after her walk, nearly out of Ensure.<small>Flagged for Ada. Ensure is on the list.</small></span></div>
+            <div class="entry"><time>3:07</time><span><span class="x">Stopped</span> a second warfarin. Grace gave it at 9:10.<small>Ada's rule: once a day</small></span></div>
+            <div class="entry"><time>3:21</time><span>Cardiology moved to Thursday at 10. Tom is taking Mom.<small>Ride at 9:15, sandbox</small></span></div>
+          </div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption>Devpost thumbnail, 3:2 (shown near gallery size)</figcaption>
+        <div class="thumb B"><div class="in">
+          <div class="tw">hearth</div>
+          <div class="th"><h6>Hold on, Rose.</h6><p>Grace gave it at 9:10. Not another today.</p></div>
+          <div class="tdev"><div class="echo B"><div class="screen">
+            <div class="bl"><div class="stopline">Stopped · Mom's warfarin</div><div class="bt">Already taken today.</div><p class="bs">Not another until tomorrow.</p></div>
+            <div class="br"><div><div class="big">9:10</div><div class="lab"><b>Grace gave it</b>this morning</div></div></div>
+          </div></div></div>
+          <div class="tsim">Simulated Alexa+</div>
+        </div></div>
+      </figure>
+    </div>
+
+    <div class="verdict">
+      <div><h3>Why it fits</h3><p>It is the most emotional of the three: a dark warm screen in a kitchen at dusk is where this story happens, and the serif makes Hearth sound like a person who cares rather than a system.</p></div>
+      <div><h3>What Phase 2 changes</h3><p>The least: the console and card keep their dark warm base, the sim loses its navy and cyan, the serif arrives. Cheapest to apply, but the least different from what judges will see elsewhere.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== C -->
+<section class="dir" id="c">
+  <div class="wrap">
+    <div class="dirhead">
+      <div>
+        <div class="kicker">Direction C</div>
+        <h2>Pharmacy Label</h2>
+        <p>Every family already trusts one piece of design about medicine: the label on the bottle, with its black rules and its coloured warning stickers. Hearth's cards become labels. The red sticker says what not to do, the yellow sticker carries the rule and who set it.</p>
+        <p>It is the most distinctive of the three and says "serious about safety" before a word is read.</p>
+      </div>
+      <dl class="facts">
+        <dt>Type</dt><dd>IBM Plex Sans Condensed for labels, IBM Plex Mono for times and the record</dd>
+        <dt>Feels like</dt><dd>Prescription labels, auxiliary warning stickers, a Swiss rail timetable</dd>
+        <dt>Signature</dt><dd>The sticker: red for refused, yellow for the rule</dd>
+        <dt>Night</dt><dd>Inverts to a black label with white rules</dd>
+        <dt>Risk</dt><dd>Clinical. Capitals are harder for older readers, and the handover and the shopping list do not want to look like medicine.</dd>
+      </dl>
+    </div>
+    <div class="swatches" data-surface="--c-paper">
+      <div class="sw"><i style="background:var(--c-paper)"></i><span data-var="--c-paper">paper</span></div>
+      <div class="sw"><i style="background:var(--c-ink)"></i><span data-var="--c-ink" data-cr>ink</span></div>
+      <div class="sw"><i style="background:var(--c-ink3)"></i><span data-var="--c-ink3" data-cr>ink-3</span></div>
+      <div class="sw"><i style="background:var(--c-red)"></i><span data-var="--c-red" data-cr>red</span></div>
+      <div class="sw"><i style="background:var(--c-yellow)"></i><span data-var="--c-yellow">sticker yellow</span></div>
+      <div class="sw"><i style="background:var(--c-green)"></i><span data-var="--c-green" data-cr>green</span></div>
+    </div>
+
+    <div class="mocks">
+      <figure>
+        <figcaption>Kitchen Echo Show, 3:07 pm. Rose: "Alexa, I'm just going to take my blood thinner."</figcaption>
+        <span class="simtag">Simulated Alexa+ · Kitchen Echo Show</span>
+        <div class="echo C"><div class="screen">
+          <div class="lbl">
+            <div class="lh"><span>Hearth · for Mom</span><span>Warfarin</span></div>
+            <div class="lb">
+              <div class="ln">Already taken today</div>
+              <div class="lt">Not another until tomorrow</div>
+              <span class="stick red">Stopped by Hearth</span>
+              <table>
+                <tr><td>Given</td><td><span class="mono">9:10 AM</span> by Grace</td></tr>
+                <tr><td>Rule</td><td>Once a day, set by Ada 12 days ago <span class="stick yel" style="font-size:calc(var(--u) * 15);padding:calc(var(--u) * 2) calc(var(--u) * 8)">Dr. Patel's letter</span></td></tr>
+              </table>
+            </div>
+            <div class="lf mono"><span>Record #1 · 08d28d7a</span><span>Simulated Alexa+</span></div>
+          </div>
+        </div></div>
+      </figure>
+
+      <figure>
+        <figcaption>Ada's Alexa app: "Mom's cardiology moved to Thursday at 10. Sort it out."</figcaption>
+        <div class="phone C"><div class="screen">
+          <div class="island"></div>
+          <div class="stat"><span>3:21</span><span>Ada</span></div>
+          <div class="ph">
+            <div class="lh"><span>Hearth · sorted</span><span>5 steps</span></div>
+            <h4>Cardiology Thu 10:00 AM</h4>
+            <span class="stick yel">Tom does Thursdays</span>
+            <table>
+              <tr><td>Calendar</td><td>Moved from <span class="mono">Tue 2:00 PM</span></td></tr>
+              <tr><td>Driver</td><td>Tom</td></tr>
+              <tr><td>Ride</td><td>Tue cancelled, <span class="mono">9:15 AM</span> booked (sandbox)</td></tr>
+              <tr><td>Board</td><td>Tom and Grace told, Tom's phone pinged</td></tr>
+            </table>
+            <div class="lf mono"><span>Record #5</span><span>54c00b2b</span></div>
+          </div>
+          <div class="psim">Simulated Alexa+</div>
+        </div></div>
+      </figure>
+
+      <figure>
+        <figcaption>The household board (/console), after Grace's shift</figcaption>
+        <div class="board C">
+          <div class="bhd"><span>Rose's house · household board</span><span class="mono">Wed 3:21 PM</span></div>
+          <div class="bcols">
+            <div class="bc">
+              <h5>Who has the say</h5>
+              <table>
+                <tr><td>Ada</td><td>Medication, food and drink, appointments, spending</td></tr>
+                <tr><td>Tom</td><td>Rides. Does Thursdays.</td></tr>
+                <tr><td>Rose</td><td>Her mealtimes</td></tr>
+                <tr><td>Grace</td><td>No say of her own. Aide, weekday mornings.</td></tr>
+              </table>
+            </div>
+            <div class="bc">
+              <h5>Today</h5>
+              <table>
+                <tr><td class="mono">2:40 PM</td><td>Grace handed over: half her lunch, a bit dizzy, nearly out of Ensure.<br><span class="stick yel">Flagged for Ada</span></td></tr>
+                <tr><td class="mono">3:07 PM</td><td>Second warfarin stopped.<br><span class="stick red">Refused</span></td></tr>
+                <tr><td class="mono">3:21 PM</td><td>Cardiology now Thursday 10 AM, Tom driving.</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </figure>
+
+      <figure>
+        <figcaption>Devpost thumbnail, 3:2 (shown near gallery size)</figcaption>
+        <div class="thumb C"><div class="in">
+          <div class="tl">
+            <div class="lh"><span>Hearth · for Mom</span><span>Warfarin</span></div>
+            <h6>Hold on, Rose.</h6>
+            <span class="stick red">Already taken today</span>
+            <table><tr><td>Given</td><td><span class="mono">9:10 AM</span> by Grace</td></tr><tr><td>Rule</td><td>Once a day, Ada</td></tr></table>
+            <div class="lf mono"><span>An Alexa+ add-on</span><span>Simulated Alexa+</span></div>
+          </div>
+          <div class="tdev"><div class="echo C"><div class="screen">
+            <div class="lbl"><div class="lh"><span>Hearth · for Mom</span><span>Warfarin</span></div>
+              <div class="lb"><div class="ln">Already taken today</div><div class="lt">Not another until tomorrow</div><span class="stick red">Stopped by Hearth</span></div></div>
+          </div></div></div>
+        </div></div>
+      </figure>
+    </div>
+
+    <div class="verdict">
+      <div><h3>Why it fits</h3><p>A medicine label is a design every carer already reads under stress. It makes the refusal feel like a real safety mechanism and would stand out instantly in a gallery of dark consoles.</p></div>
+      <div><h3>What Phase 2 changes</h3><p>The most: new composition for every card, a label grammar for non-medicine scenes (the handover, the order) that does not yet exist, and all-caps headings that cut against the older-reader principle.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- =============================================================== pick -->
+<section class="dir" id="pick">
+  <div class="wrap">
+    <div class="kicker">Compare and pick</div>
+    <h2 style="font-size:clamp(28px,4.4vw,40px);margin:4px 0 10px;letter-spacing:-.015em">Recommendation: A, Care Card</h2>
+    <p class="lede">The Design criterion asks whether the product is "a complete, coherent product experience" and whether the interaction is "well-considered for the target device". A answers both most directly: one system across every surface, set at the size a kitchen and an 84-year-old need. B is the warmer mood but the most ordinary in the field. C is the boldest idea but fights the audience's eyes and only fits the medicine scenes.</p>
+    <div class="cmpwrap">
+    <table class="cmp">
+      <thead><tr><th></th><th>A. Care Card</th><th>B. Lamplight</th><th>C. Pharmacy Label</th></tr></thead>
+      <tbody>
+        <tr><td>Read from across a kitchen</td><td data-h="A">Best: hyperlegible type, dark on light</td><td data-h="B">Good: big serif, but light on dark blooms</td><td data-h="C">Good at the headline, weak in condensed caps</td></tr>
+        <tr><td>Calm and trustworthy for a family</td><td data-h="A">Calm, clinical warmth</td><td data-h="B">Warmest</td><td data-h="C">Trustworthy, but stern</td></tr>
+        <tr><td>Reads as a serious product to Amazon</td><td data-h="A">Yes, like a health product</td><td data-h="B">Yes, like a consumer device</td><td data-h="C">Yes, like a safety system</td></tr>
+        <tr><td>Stands out in a gallery of entries</td><td data-h="A">Strongly: most entries will be dark</td><td data-h="B">Weakly: dark is the default</td><td data-h="C">Most strongly</td></tr>
+        <tr><td>Survives YouTube compression</td><td data-h="A">Best</td><td data-h="B">Worst: dark gradients band and grey text smears</td><td data-h="C">Good</td></tr>
+        <tr><td>Fits every scene (handover, order, record)</td><td data-h="A">Yes, the status band is generic</td><td data-h="B">Yes</td><td data-h="C">Only the medicine ones feel natural</td></tr>
+        <tr><td>Phase 2 effort before 23 Oct</td><td data-h="A">Medium: one palette, new type, layout fixes</td><td data-h="B">Low</td><td data-h="C">High: new composition everywhere</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="color:var(--pg-ink2);max-width:70ch;margin-top:24px">If A feels too plain once it is on the real pages, it can borrow one thing from C without becoming C: the warfarin rule shown as a yellow label chip. The binding tokens for A, and the test for each principle, are in <code>design/DESIGN.md</code>.</p>
+  </div>
+</section>
+</main>
+
+<footer><div class="wrap">Hearth design pass, Phase 1, 15 October 2026. Contrast ratios beside each swatch are computed live against that direction's surface in the current theme (WCAG 2.1). Fonts from Google Fonts; every image on this page is CSS or inline SVG.</div></footer>
+
+<script>
+(function(){
+  var root = document.documentElement;
+  function setTheme(v){
+    try{ if(v==="auto"){ root.removeAttribute("data-theme"); localStorage.removeItem("hearth-dir-theme"); }
+         else { root.setAttribute("data-theme", v); localStorage.setItem("hearth-dir-theme", v); } }
+    catch(e){ if(v==="auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", v); }
+    document.querySelectorAll(".theme button").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.set===v)); });
+    paint();
+  }
+  document.querySelectorAll(".theme button").forEach(function(b){ b.addEventListener("click", function(){ setTheme(b.dataset.set); }); });
+  try{ var saved = localStorage.getItem("hearth-dir-theme"); if(saved) setTheme(saved); }catch(e){}
+
+  function hex(v){ v = v.trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : null; }
+  function lum(h){ var c=[1,3,5].map(function(i){ var x=parseInt(h.substr(i,2),16)/255; return x<=0.03928? x/12.92 : Math.pow((x+0.055)/1.055,2.4); });
+    return 0.2126*c[0]+0.7152*c[1]+0.0722*c[2]; }
+  function ratio(a,b){ var la=lum(a), lb=lum(b); if(la<lb){var t=la;la=lb;lb=t;} return (la+0.05)/(lb+0.05); }
+  function paint(){
+    var cs = getComputedStyle(root);
+    document.querySelectorAll(".swatches").forEach(function(row){
+      var surf = hex(cs.getPropertyValue(row.dataset.surface));
+      row.querySelectorAll("[data-var]").forEach(function(el){
+        if(!el.dataset.name) el.dataset.name = el.textContent;
+        var h = hex(cs.getPropertyValue(el.dataset.var)); if(!h) return;
+        var t = el.dataset.name + " " + h.toUpperCase();
+        if(el.hasAttribute("data-cr") && surf) t += " · " + ratio(h, surf).toFixed(2) + ":1";
+        el.textContent = t;
+      });
+    });
+  }
+  paint();
+  if(window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint);
+})();
+</script>
+</body>
+</html>
