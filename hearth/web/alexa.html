@@ -11,157 +11,241 @@
   2025-11-25 over Streamable HTTP to /mcp: initialize, tools/list,
   resources/read for Hearth's MCP App, and tools/call. It hosts that MCP App in
   a sandboxed iframe the way an Echo Show would, over the ui/* postMessage
-  bridge. Every request and response is drawn in the traffic panel as it
-  happens. The one thing it cannot be is Alexa's model: /sim/plan picks the
-  tool calls (a configured model, else a small rule set, and the panel says
-  which), and every word the assistant says is the text Hearth's tools return.
+  bridge. Every request and response is drawn in the traffic panel ("Under the
+  hood", or T) as it happens. The one thing it cannot be is Alexa's model:
+  /sim/plan picks the tool calls (a configured model, else a small rule set,
+  and the header says which), and every word the assistant says is the text
+  Hearth's tools return.
+
+  Design: design/DESIGN.md, direction C (Pharmacy Label).
 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0b0d10; --panel:#11151a; --panel2:#171c23; --line:#232a33; --ink:#eef2f6;
-    --muted:#9aa7b4; --dim:#5f6b78; --alexa:#1ec8ff; --alexa2:#3a7bff;
-    --ember:#ff7a45; --ok:#7fd49a; --stop:#ff6b4a; --warn:#ffc35c;
-    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --desk:#ECECE7; --paper:#FFFFFF; --line:#D2D2CB; --rule:#111111; --ink:#0B0B0B; --ink-2:#3A3A3A; --ink-3:#595954;
+    --red:#C8201A; --on-red:#FFFFFF; --red-tint:#FCE9E7; --yellow:#FFD43B; --on-yellow:#0B0B0B;
+    --blue:#1F4FB5; --on-blue:#FFFFFF; --blue-tint:#E6EDFA; --green:#006B47; --on-green:#FFFFFF;
+    /* device hardware */
+    --hw-bezel:#161616; --hw-edge:#34342F; --hw-fabric:#4A4A47; --hw-light:#8DB0FF; --hw-screen:#0B0B0B;
+    --sans:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:radial-gradient(1200px 700px at 30% 20%,#16202b 0,#0b0d10 60%);
-       color:var(--ink);font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+  body{margin:0;background:var(--desk);color:var(--ink);font:17px/1.4 var(--sans);
        -webkit-font-smoothing:antialiased;overflow:hidden}
-  header{display:flex;align-items:center;gap:14px;padding:14px 24px;border-bottom:1px solid var(--line);
-         background:rgba(11,13,16,.7);backdrop-filter:blur(6px)}
-  .brand{font-weight:720;font-size:19px;letter-spacing:-.01em}
-  .brand span{color:var(--ember)}
-  .sim{background:var(--warn);color:#1b1300;font-weight:800;font-size:12px;letter-spacing:.1em;
-       border-radius:6px;padding:5px 9px;text-transform:uppercase}
-  .pill{font:12px/1 var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 10px}
-  .pill.ok{color:var(--ok);border-color:#24432e}
+  button{font-family:var(--sans)}
+  .caps{text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+
+  /* header: the product, the honesty label, and what is driving it */
+  header{display:flex;align-items:center;gap:16px;padding:12px 24px;border-bottom:3px solid var(--rule);
+         background:var(--paper);min-height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:26px;letter-spacing:-.01em}
+  .brand svg{width:26px;height:26px}
+  .sim{background:var(--rule);color:var(--paper);font-size:14px;padding:7px 10px;line-height:1}
+  .status{display:flex;gap:4px 14px;flex-wrap:wrap;color:var(--ink-3);font-size:15px;margin-left:8px;min-width:0}
+  .status span{white-space:nowrap}
+  .status .ok{color:var(--green)} .status .warn{color:var(--red)}
   .grow{flex:1}
-  main{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(420px,.9fr);height:calc(100% - 59px)}
-  .stage{display:flex;flex-direction:column;padding:18px 26px 14px;min-width:0;min-height:0}
-  .devices{display:flex;gap:8px;margin-bottom:12px}
-  .devices button{font:inherit;font-size:13px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
-                  border-radius:10px;padding:8px 12px;cursor:pointer}
-  .devices button.on{color:var(--ink);border-color:#2f6f8a;background:#0f2430}
-  .devices small{display:block;color:var(--dim);font-size:11.5px}
+  .hood{font-size:15px;font-weight:600;color:var(--ink);background:var(--paper);border:2px solid var(--rule);
+        padding:8px 12px;cursor:pointer;white-space:nowrap}
+  .hood[aria-pressed="true"]{background:var(--rule);color:var(--paper)}
+  .hood b{font-family:var(--mono);font-weight:600}
+
+  main{display:grid;grid-template-columns:288px minmax(0,1fr) minmax(360px,.62fr);height:calc(100% - 64px);position:relative}
+
+  /* the household: who is here, where, and who has the say */
+  .house{background:var(--paper);border-right:3px solid var(--rule);overflow-y:auto;display:flex;flex-direction:column}
+  .house .lh{padding:14px 20px 12px;border-bottom:3px solid var(--rule);display:flex;justify-content:space-between;font-size:14px}
+  .person{display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:start;text-align:left;width:100%;
+          background:none;border:0;border-bottom:1.5px solid var(--rule);padding:14px 20px;cursor:pointer;color:var(--ink);font-size:16px;line-height:1.3}
+  .person:hover{background:var(--desk)}
+  .person .av{width:40px;height:40px;display:grid;place-items:center;border:2px solid var(--rule);font-weight:700;font-size:18px}
+  .person b{display:block;font-size:20px}
+  .person small{display:block;color:var(--ink-3);font-size:15px}
+  .person .say{display:block;margin-top:4px;color:var(--ink-2);font-size:15px}
+  .person.on{background:var(--rule);color:var(--paper)}
+  .person.on small,.person.on .say{color:var(--paper)}
+  .person.on .av{border-color:var(--paper)}
+  .person .stk{display:inline-block;margin-top:6px;font-size:12.5px;padding:4px 7px;line-height:1;background:var(--blue);color:var(--on-blue)}
+  .house .foot{margin-top:auto;padding:14px 20px;color:var(--ink-3);font-size:14px;border-top:1.5px solid var(--rule)}
+
+  /* the stage: device tabs, then the device */
+  .stage{display:flex;flex-direction:column;min-width:0;min-height:0;padding:18px 28px 18px}
+  .devices{display:flex;gap:0;margin-bottom:16px;flex:none}
+  .devices button{font-size:15px;color:var(--ink);background:var(--paper);border:2px solid var(--rule);
+                  margin-right:-2px;padding:8px 14px;cursor:pointer;text-align:left;line-height:1.2}
+  .devices button.on{background:var(--rule);color:var(--paper)}
+  .devices small{display:block;font-size:13px;opacity:.85}
+  .devices .badge{display:inline-block;margin-left:8px;width:10px;height:10px;background:var(--yellow);border:1.5px solid var(--rule);vertical-align:1px}
+  #device{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 
   /* Echo Show 8: 768x480 base canvas, scaled to the stage. */
-  .show{position:relative;align-self:center;flex:none;width:min(100%,800px,calc((100vh - 330px) * 1.51));aspect-ratio:16/10.6;
-        background:#050607;border-radius:26px;padding:16px 16px 26px;
-        box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 0 0 1px #1d232a}
-  .screen{position:relative;width:100%;height:100%;border-radius:12px;overflow:hidden;background:#1a1411}
-  .screen iframe{width:100%;height:100%;border:0;display:block;background:#1a1411}
-  .lightbar{position:absolute;left:16px;right:16px;bottom:10px;height:6px;border-radius:6px;
-            background:linear-gradient(90deg,var(--alexa2),var(--alexa),var(--alexa2));
-            opacity:0;transition:opacity .25s}
-  .speaking .lightbar{opacity:1;animation:pulse 1.1s ease-in-out infinite}
-  .listening .lightbar{opacity:.55}
-  @keyframes pulse{50%{filter:brightness(1.6)}}
-  .idle{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#d9c8bb;
-        font-size:42px;font-weight:300;letter-spacing:-.02em}
-  .idle small{display:block;font-size:17px;color:#8d7868;margin-top:6px}
-  .label{position:absolute;top:-11px;left:24px;background:var(--warn);color:#1b1300;font-size:11px;
-         font-weight:800;letter-spacing:.08em;border-radius:5px;padding:3px 8px;text-transform:uppercase}
+  .show{position:relative;width:min(100%,calc((100vh - 230px) * 1.6));aspect-ratio:16/10.9;background:var(--hw-bezel);
+        border-radius:22px;padding:2.4% 2.4% 4.6%;box-shadow:inset 0 0 0 1.5px var(--hw-edge)}
+  .screen{position:relative;width:100%;height:100%;overflow:hidden;background:var(--paper)}
+  .screen iframe{width:100%;height:100%;border:0;display:block;background:var(--paper)}
+  .lightbar{position:absolute;left:2.4%;right:2.4%;bottom:1.6%;height:4px;background:var(--hw-light);opacity:0;transition:opacity .16s ease-out}
+  .speaking .lightbar{opacity:1}
+  .listening .lightbar{opacity:.45}
+  @media (prefers-reduced-motion:no-preference){.speaking .lightbar{animation:pulse 1.1s ease-in-out infinite}}
+  @keyframes pulse{50%{opacity:.55}}
+  .idle{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 8%;background:var(--desk)}
+  .idle .t{font:600 clamp(40px,7vw,96px)/1 var(--mono);letter-spacing:-.02em}
+  .idle small{display:block;font-size:clamp(15px,1.6vw,22px);color:var(--ink-3);margin-top:12px}
+  .devcap{margin-top:12px;color:var(--ink-3);font-size:15px;text-align:center;max-width:62ch}
 
-  /* Echo Dot: voice only. Nothing to draw, so nothing is drawn. */
-  .dot{align-self:center;width:300px;height:300px;border-radius:50%;margin:40px 0;position:relative;
-       background:radial-gradient(circle at 50% 40%,#2b3138,#14181c 70%);box-shadow:0 30px 80px rgba(0,0,0,.6)}
-  .dot::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:8px solid transparent;transition:.25s}
-  .dot.speaking::after{border-color:var(--alexa);box-shadow:0 0 40px var(--alexa);animation:pulse 1.1s infinite}
-  .dot.listening::after{border-color:rgba(30,200,255,.45)}
-  .dotcap{text-align:center;color:var(--dim);font-size:13px;margin-top:-26px}
-  /* A real Echo shows a pulsing yellow ring when a notification is waiting. */
-  .dot.notified::after{border-color:#ffc35c;box-shadow:0 0 34px #ffc35c;animation:pulse 1.6s infinite}
-  .devices button .badge{display:inline-block;margin-left:6px;width:9px;height:9px;border-radius:50%;background:#ffc35c;box-shadow:0 0 8px #ffc35c}
+  /* Echo Dot: voice only, a fabric puck with a light ring. Nothing to draw. */
+  .dot{width:min(300px,60vw);aspect-ratio:1;border-radius:50%;position:relative;background:var(--hw-fabric);
+       box-shadow:inset 0 0 0 14px var(--hw-bezel)}
+  .dot svg{position:absolute;inset:32%;width:36%;height:36%}
+  .dot::after{content:"";position:absolute;inset:3px;border-radius:50%;border:8px solid transparent;transition:border-color .16s ease-out}
+  .dot.speaking::after{border-color:var(--hw-light)}
+  .dot.listening::after{border-color:var(--hw-light);opacity:.5}
+  .dot.notified::after{border-color:var(--yellow)}
+  @media (prefers-reduced-motion:no-preference){.dot.speaking::after,.dot.notified::after{animation:pulse 1.4s ease-in-out infinite}}
 
-  .talk{margin-top:14px;flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:6px}
-  .turn{max-width:92%;padding:10px 14px;border-radius:14px;font-size:16px;line-height:1.45}
-  .turn b{display:block;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:2px}
-  .human{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
-  .alexa{align-self:flex-end;background:#0c2532;border:1px solid #17485e}
-  .alexa b{color:var(--alexa)}
-  .alexa.stop{border-color:#6b2a1e;background:#2a120d}
-  .alexa.stop b{color:var(--stop)}
-  .host{align-self:center;color:var(--dim);font-size:13px;font-style:italic}
+  /* Alexa app: a phone, in portrait. */
+  .phone{height:min(100%,740px);aspect-ratio:9/18.2;background:var(--hw-bezel);border-radius:36px;padding:10px;
+         box-shadow:inset 0 0 0 1.5px var(--hw-edge);position:relative}
+  .phone .screen{border-radius:27px;background:var(--desk);display:flex;flex-direction:column}
+  .phone .bar{display:flex;justify-content:space-between;padding:12px 22px 0;font:600 14px/1 var(--sans);flex:none}
+  .phone .island{position:absolute;top:18px;left:50%;transform:translateX(-50%);width:84px;height:24px;border-radius:99px;background:var(--hw-screen)}
+  .phone .app{display:flex;justify-content:space-between;align-items:center;padding:20px 14px 10px;flex:none}
+  .phone .app b{font-size:22px}
+  .phone .app span{font-size:12px;padding:4px 7px;line-height:1;background:var(--rule);color:var(--paper)}
+  .phone .feed{flex:1;overflow-y:auto;padding:0 12px 12px}
+  .phone .feed iframe{width:100%;border:0;display:block;height:200px;background:var(--paper)}
+  .phone .empty{color:var(--ink-3);font-size:15px;padding:24px 4px}
+  .phone .lightbar{left:20%;right:20%;bottom:16px;border-radius:2px}
 
-  .say{display:flex;gap:8px;align-items:center;margin-top:10px}
-  .who{display:flex;gap:6px}
-  .who button{font:inherit;font-size:13px;color:var(--muted);background:var(--panel);border:1px solid var(--line);
-              border-radius:999px;padding:7px 12px;cursor:pointer}
-  .who button.on{background:var(--ink);color:#0b0d10;border-color:var(--ink);font-weight:650}
-  .say input{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--ink);background:var(--panel);
-             border:1px solid var(--line);border-radius:12px;padding:11px 14px;outline:none}
-  .say input:focus{border-color:#2f6f8a}
-  .btn{font:inherit;font-size:14px;color:var(--ink);background:var(--panel2);border:1px solid var(--line);
-       border-radius:12px;padding:10px 14px;cursor:pointer;white-space:nowrap}
-  .btn.primary{background:var(--alexa);color:#00202b;border-color:var(--alexa);font-weight:700}
-  .btn:disabled{opacity:.4;cursor:default}
-  .next{margin-top:8px;color:var(--dim);font-size:13px;display:flex;gap:10px;align-items:center}
-  .next q{color:var(--muted)}
-  kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--muted)}
-
-  .wire{border-left:1px solid var(--line);background:rgba(10,12,15,.85);display:flex;flex-direction:column;min-height:0}
-  .wire h2{margin:0;padding:14px 18px 6px;font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
-  .wire .sub{padding:0 18px 10px;color:var(--dim);font-size:12.5px;border-bottom:1px solid var(--line)}
-  .log{flex:1;overflow-y:auto;padding:8px 12px 30px;font:12.5px/1.45 var(--mono)}
-  .ev{border:1px solid var(--line);border-radius:9px;margin:7px 0;background:var(--panel);overflow:hidden;
-      animation:in .25s ease-out}
+  /* the conversation */
+  .talkcol{display:flex;flex-direction:column;min-height:0;border-left:3px solid var(--rule);background:var(--paper)}
+  .talkcol .lh{padding:14px 20px 12px;border-bottom:3px solid var(--rule);display:flex;justify-content:space-between;font-size:14px;flex:none}
+  .talk{flex:1;min-height:0;overflow-y:auto;padding:4px 20px 12px}
+  .turn{padding:12px 0 12px 14px;border-bottom:1.5px solid var(--line);font-size:18px;line-height:1.38;border-left:4px solid transparent}
+  .turn b{display:block;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:2px}
+  .human{color:var(--ink-2)}
+  .alexa{border-left-color:var(--rule);color:var(--ink)}
+  .alexa b{color:var(--ink)}
+  .alexa.stop{border-left-color:var(--red)}
+  .alexa.stop b{color:var(--red)}
+  .turn.host{font-size:15px;color:var(--ink-3);font-style:italic;border-left:0;padding-left:0}
+  @media (prefers-reduced-motion:no-preference){.turn{animation:in .22s ease-out}}
   @keyframes in{from{opacity:0;transform:translateY(6px)}}
-  .ev summary{list-style:none;cursor:pointer;padding:8px 10px;display:flex;gap:8px;align-items:baseline}
+
+  .sayzone{flex:none;border-top:3px solid var(--rule);padding:12px 20px 14px}
+  .speaking-as{font-size:14px;color:var(--ink-3);margin-bottom:8px}
+  .speaking-as b{color:var(--ink)}
+  .say{display:flex;gap:8px;align-items:stretch}
+  .say input{flex:1;min-width:0;font:17px var(--sans);color:var(--ink);background:var(--paper);
+             border:2px solid var(--rule);padding:11px 12px;outline:none;border-radius:0}
+  .say input:focus{box-shadow:inset 0 0 0 1px var(--rule)}
+  .say input::placeholder{color:var(--ink-3)}
+  .btn{font-size:16px;font-weight:600;color:var(--ink);background:var(--paper);border:2px solid var(--rule);
+       padding:10px 14px;cursor:pointer;white-space:nowrap;border-radius:0}
+  .btn.primary{background:var(--rule);color:var(--paper)}
+  .btn:disabled{opacity:.45;cursor:default}
+  .next{margin-top:10px;color:var(--ink-3);font-size:15px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .next q{color:var(--ink-2)}
+  .next .btn{padding:7px 12px;font-size:15px}
+  kbd{font:13px var(--mono);border:1.5px solid var(--ink-3);padding:0 5px;color:var(--ink-2)}
+  .who{display:none}
+
+  /* Under the hood: the MCP traffic, on request */
+  .wire{position:absolute;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--paper);border-left:3px solid var(--rule);
+        display:flex;flex-direction:column;min-height:0;transform:translateX(102%);transition:transform .2s ease-out;z-index:5}
+  body.wire-on .wire{transform:none}
+  .wire .lh{padding:14px 18px 12px;border-bottom:3px solid var(--rule);display:flex;justify-content:space-between;align-items:center;font-size:14px}
+  .wire .lh button{font-size:13px;background:none;border:1.5px solid var(--rule);padding:4px 8px;cursor:pointer}
+  .wire .sub{padding:10px 18px;color:var(--ink-3);font-size:14px;border-bottom:1.5px solid var(--rule);font-family:var(--mono);overflow-wrap:anywhere}
+  .log{flex:1;overflow-y:auto;padding:0 18px 30px;font:13px/1.45 var(--mono)}
+  .ev{border-bottom:1px solid var(--line)}
+  .ev summary{list-style:none;cursor:pointer;padding:7px 0;display:flex;gap:8px;align-items:baseline}
   .ev summary::-webkit-details-marker{display:none}
-  .dir{font-weight:800;width:14px;flex:none}
-  .req .dir{color:var(--alexa)} .res .dir{color:var(--ok)} .res.err .dir{color:var(--stop)}
-  .plan .dir{color:var(--warn)} .host .dir{color:#c9a7ff}
-  .m{color:var(--ink);font-weight:650}
-  .a{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-  .t{color:var(--dim);flex:none}
-  .ev pre{margin:0;padding:8px 10px 10px;border-top:1px solid var(--line);color:#b9c6d3;white-space:pre-wrap;
-          word-break:break-word;max-height:300px;overflow:auto;background:#0d1014}
-  .tag{font-size:10.5px;border-radius:4px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
-  .tag.refused{color:var(--stop);border-color:#6b2a1e}
-  .tag.ok{color:var(--ok);border-color:#24432e}
-  .foot{padding:8px 18px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
-  .pill.warn{color:var(--stop);border-color:#6b2a1e}
-  .speaking-as{display:none;color:var(--muted);font-size:13px;white-space:nowrap}
-  /* Film mode (?film=1): the device and the conversation, full width. No
-     scene button, no persona chips; the traffic panel slides in on T. */
-  body.film .next, body.film .who{display:none}
-  body.film .speaking-as{display:block}
-  body.film main{grid-template-columns:minmax(0,1fr) 0;transition:grid-template-columns .35s ease}
-  body.film.wire-on main{grid-template-columns:minmax(0,1.25fr) minmax(420px,.9fr)}
-  body.film .wire{overflow:hidden}
-  .notready{display:none;position:fixed;left:50%;top:70px;transform:translateX(-50%);z-index:9;
-            background:#2a120d;border:1px solid #6b2a1e;color:#ffb4a3;border-radius:10px;padding:10px 16px;font-size:14px}
+  .dir{font-weight:600;width:14px;flex:none;color:var(--ink-3)}
+  .req .dir{color:var(--blue)} .res .dir{color:var(--green)} .res.err .dir{color:var(--red)}
+  .m{color:var(--ink);font-weight:600}
+  .a{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .t{color:var(--ink-3);flex:none}
+  .ev pre{margin:0 0 8px;padding:8px 10px;color:var(--ink-2);white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;background:var(--desk)}
+  .tag{font-size:11.5px;padding:1px 6px;border:1.5px solid var(--rule);color:var(--ink);text-transform:uppercase;letter-spacing:.04em}
+  .tag.refused{background:var(--red);border-color:var(--red);color:var(--on-red)}
+  .tag.ok{border-color:var(--green);color:var(--green)}
+  .wire .foot{padding:10px 18px;border-top:1.5px solid var(--rule);color:var(--ink-3);font-size:14px}
+
+  .notready{display:none;position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9;
+            background:var(--red-tint);border:2px solid var(--red);color:var(--ink);padding:10px 16px;font-size:15px}
+
+  /* Film mode (?film=1): the family, the device and the conversation. No
+     scene button and no chips; the traffic slides in on T. */
+  body.film .next{display:none}
+  body.film main{grid-template-columns:320px minmax(0,1fr) minmax(400px,.6fr)}
+  body.film .turn{font-size:20px}
+
+  /* Smaller screens: one column, the page scrolls. */
+  @media (max-width:1100px){
+    body{overflow:auto}
+    main{grid-template-columns:1fr;height:auto}
+    .house{border-right:0;border-bottom:3px solid var(--rule)}
+    .house .people{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+    .house .foot{display:none}
+    .stage{padding:16px}
+    .show{width:100%}
+    .phone{height:auto;width:min(320px,100%)}
+    .talkcol{border-left:0;border-top:3px solid var(--rule);min-height:60vh}
+    .wire{position:fixed;top:0;height:100%}
+    .status{display:none}
+  }
+  @media (max-width:520px){
+    header{padding:10px 16px;gap:10px;flex-wrap:wrap}
+    .brand{font-size:22px}
+    .devices{flex-wrap:wrap}
+    .devices button{flex:1 1 auto}
+    .say{flex-wrap:wrap}
+    .say input{flex-basis:100%}
+    .talk,.sayzone,.house .lh,.talkcol .lh{padding-left:16px;padding-right:16px}
+    .person{padding:12px 16px}
+  }
 </style>
 <header>
-  <div class="brand">hearth<span>.</span></div>
-  <div class="sim" title="Alexa+ is not available to hackathon entrants. This page is a real MCP client standing in for it.">Simulated Alexa+</div>
-  <div class="pill" id="proto">MCP 2025-11-25 · Streamable HTTP</div>
-  <div class="pill" id="auth">OAuth 2.1 + PKCE …</div>
+  <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 27V14a9 9 0 0 1 18 0v13" fill="none" stroke="currentColor" stroke-width="3.2"/><path d="M4 27.5h24" stroke="currentColor" stroke-width="3.2"/><rect x="13" y="18" width="6" height="9" fill="currentColor"/></svg>hearth</div>
+  <div class="sim caps" title="Alexa+ is not available to hackathon entrants. This page is a real MCP client standing in for it.">Simulated Alexa+</div>
+  <div class="status"><span id="planner">planner …</span><span id="voice">voice …</span><span id="auth">OAuth 2.1 + PKCE …</span><span id="proto">MCP 2025-11-25</span></div>
   <div class="grow"></div>
-  <div class="pill" id="voice">voice …</div>
-  <div class="pill" id="planner">planner …</div>
+  <button class="hood" id="hood" aria-pressed="false" title="The MCP traffic between this page and Hearth (T)">Under the hood <b id="hoodn">0</b></button>
 </header>
 <div class="notready" id="notready">Not ready to film: no model planner is configured, so the offline rules would plan. See docs/OWNER_TODO.md.</div>
 <main>
+  <aside class="house" aria-label="The household">
+    <div class="lh caps"><span>Rose's house</span><span>4 people</span></div>
+    <div class="people" id="who"></div>
+    <div class="foot">Pick a person to speak as them. Each device keeps its own MCP session.</div>
+  </aside>
   <section class="stage">
     <div class="devices" id="devices"></div>
     <div id="device"></div>
-    <div class="talk" id="talk"></div>
-    <div class="say">
-      <div class="who" id="who"></div>
-      <div class="speaking-as" id="speakingAs"></div>
-      <input id="said" placeholder="Say something to Alexa…" autocomplete="off">
-      <button class="btn" id="mic" title="Speak (Chrome)">Mic</button>
-      <button class="btn primary" id="send">Send</button>
-    </div>
-    <div class="next" id="next"></div>
   </section>
-  <aside class="wire">
-    <h2>MCP traffic, live</h2>
+  <section class="talkcol" aria-label="Conversation">
+    <div class="lh caps"><span>What was said</span><span id="tcount"></span></div>
+    <div class="talk" id="talk"></div>
+    <div class="sayzone">
+      <div class="speaking-as" id="speakingAs"></div>
+      <div class="say">
+        <input id="said" placeholder="Say something to Alexa" autocomplete="off" aria-label="Say something to Alexa">
+        <button class="btn" id="mic" title="Speak (Chrome)">Mic</button>
+        <button class="btn primary" id="send">Send</button>
+      </div>
+      <div class="next" id="next"></div>
+    </div>
+  </section>
+  <aside class="wire" aria-label="Under the hood">
+    <div class="lh caps"><span>Under the hood · MCP traffic, live</span><button type="button" id="hoodx">Close</button></div>
     <div class="sub" id="wiresub">Every request this page sends to Hearth, and every answer.</div>
     <div class="log" id="log"></div>
-    <div class="foot" id="foot">Hearth records every tools/call server-side: hash-chained, each head signed, and this device keeps a receipt.</div>
+    <div class="foot" id="foot">Hearth records every tools/call on the server: hash-chained, each head signed, and this device keeps a receipt.</div>
   </aside>
 </main>
 <script>
@@ -175,6 +259,14 @@ const DEVICES = {
   phone:   {name: "Alexa app", where: "Ada's phone", screen: true},
 };
 const PEOPLE = {Rose: "kitchen", Grace: "kitchen", Tom: "dot", Ada: "phone"};
+// How the household reads on the side of the page: who each person is, and
+// who has the say over what (the same roles Hearth's household holds).
+const ABOUT = {
+  Rose: {who: "Mom, 84", say: "Lives here. Has the say over her mealtimes."},
+  Grace: {who: "Aide, weekday mornings", say: "No say of her own."},
+  Tom: {who: "Son, two states away", say: "Does Thursdays. Has the say over rides."},
+  Ada: {who: "Daughter, health care proxy", say: "Has the say over medication, food and drink, appointments and spending."},
+};
 
 // The scripted scenes for the video. Press → (or the button) for the next one.
 // Every Alexa line is whatever Hearth answers; only the people are scripted.
@@ -215,11 +307,13 @@ const muted = params.get("mute") === "1";
 
 // --- the traffic panel ------------------------------------------------------
 const t0 = performance.now();
+let wireCount = 0;
 function stamp() { return ((performance.now() - t0) / 1000).toFixed(1) + "s"; }
 function log(kind, method, args, body, extra = "") {
   const d = document.createElement("details");
   d.className = "ev " + kind;
   const arrow = {req: "→", res: "←", plan: "◆", host: "◇"}[kind.split(" ")[0]] || "·";
+  $("#hoodn").textContent = String(++wireCount);
   d.innerHTML = `<summary><span class="dir">${arrow}</span><span class="m">${esc(method)}</span>
     <span class="a">${esc(args)}</span>${extra}<span class="t">${stamp()}</span></summary>
     <pre>${esc(typeof body === "string" ? body : JSON.stringify(body, null, 2))}</pre>`;
@@ -288,16 +382,25 @@ let frame = null, frameReady = false, pendingResult = null;
 function drawDevice() {
   const d = DEVICES[device];
   $("#devices").innerHTML = Object.entries(DEVICES).map(([k, v]) =>
-    `<button class="${k === device ? "on" : ""}" onclick="pickDevice('${k}')">${esc(v.name)}${devWaiting(k) ? '<span class="badge" title="notification waiting"></span>' : ""}<small>${esc(v.where)}</small></button>`).join("");
+    `<button class="${k === device ? "on" : ""}" onclick="pickDevice('${k}')">${esc(v.name)}${devWaiting(k) ? '<span class="badge" title="A note is waiting"></span>' : ""}<small>${esc(v.where)}</small></button>`).join("");
+  frame = null; frameReady = false;
   if (!d.screen) {
     const n = devWaiting(device);
-    $("#device").innerHTML = `<div class="dot${n ? " notified" : ""}" id="frameWrap"></div><div class="dotcap">${esc(d.name)} · ${esc(d.where)} · ${n ? `${n.who} has a notification waiting${n.phone ? ", and it was pushed to his phone" : ""}` : "no screen, so Hearth's voice reply is the whole answer"}</div>`;
-    frame = null; frameReady = false;
+    $("#device").innerHTML = `<div class="dot${n ? " notified" : ""}" id="frameWrap"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="6" r="3.2" fill="var(--hw-bezel)"/><circle cx="18" cy="30" r="3.2" fill="var(--hw-bezel)"/><circle cx="6" cy="18" r="3.2" fill="var(--hw-bezel)"/><circle cx="30" cy="18" r="3.2" fill="var(--hw-bezel)"/></svg></div>
+      <div class="devcap">Simulated ${esc(d.name)}, ${esc(d.where)}. ${n ? `A note is waiting for ${n.who}${n.phone ? ", and it was pushed to his phone too" : ""}: the yellow ring.` : "No screen, so Hearth's spoken reply is the whole answer."}</div>`;
     return;
   }
-  $("#device").innerHTML = `<div class="show" id="frameWrap"><div class="label">Simulated ${esc(d.name)}</div>
-    <div class="screen"><div class="idle" id="idle">${clock()}<small>${esc(d.where)}</small></div></div><div class="lightbar"></div></div>`;
-  frame = null; frameReady = false;
+  if (device === "phone") {
+    $("#device").innerHTML = `<div class="phone" id="frameWrap"><div class="island"></div><div class="screen">
+      <div class="bar"><span>${clock()}</span><span>Ada</span></div>
+      <div class="app"><b>Alexa</b><span class="caps">Simulated</span></div>
+      <div class="feed" id="feed"><div class="empty">Ada's Alexa app. Hearth's answers appear here as labels.</div></div></div></div>
+      <div class="devcap">Simulated ${esc(d.name)}, ${esc(d.where)}.</div>`;
+    return;
+  }
+  $("#device").innerHTML = `<div class="show" id="frameWrap">
+    <div class="screen"><div class="idle" id="idle"><span class="t">${clock()}</span><small>${esc(d.where)}</small></div></div><div class="lightbar"></div></div>
+    <div class="devcap">Simulated ${esc(d.name)}, ${esc(d.where)}: Hearth's MCP App, drawn on the 768x480 canvas.</div>`;
 }
 function devWaiting(dev) {
   const who = Object.keys(PEOPLE).find(p => PEOPLE[p] === dev && waiting[p] && p !== "Rose" && p !== "Grace");
@@ -309,7 +412,7 @@ window.pickDevice = pickDevice;
 
 function showResult(result) {
   if (!DEVICES[device].screen || !cardHtml) return;
-  const screen = document.querySelector(".screen");
+  const screen = device === "phone" ? document.getElementById("feed") : document.querySelector(".screen");
   if (!frame) {
     screen.innerHTML = "";
     frame = document.createElement("iframe");
@@ -334,8 +437,12 @@ window.addEventListener("message", async ev => {
   if (m.method === "ui/initialize") {
     frame.contentWindow.postMessage({jsonrpc: "2.0", id: m.id, result: {
       protocolVersion: "2026-01-26", hostInfo: {name: "simulated-alexa-plus", version: "1.0"},
-      hostCapabilities: {}, hostContext: {theme: "dark", displayMode: "inline", deviceClass: "echo-show-8",
-        maxWidth: 768, maxHeight: 480, platform: "simulated"}}}, "*");
+      hostCapabilities: {}, hostContext: device === "phone"
+        ? {theme: "light", displayMode: "flow", deviceClass: "phone", platform: "simulated"}
+        : {theme: "light", displayMode: "inline", deviceClass: "echo-show-8",
+           maxWidth: 768, maxHeight: 480, platform: "simulated"}}}, "*");
+  } else if (m.method === "ui/notifications/size-changed") {
+    if (device === "phone" && m.params && m.params.height) frame.style.height = m.params.height + "px";
   } else if (m.method === "ui/notifications/initialized") {
     frameReady = true; deliver();
   } else if (m.method === "ui/message") {
@@ -430,7 +537,7 @@ async function converse(who, said, opts = {}) {
     if (sc.medication !== undefined) lastMed = sc.medication;
     for (const p of sc.told || []) waiting[p] = {phone: (sc.notified || []).some(n => n.to === p)};
     if (c.name === "catch_up") delete waiting[who];
-    if ((sc.told || []).length || c.name === "catch_up") drawDevice();
+    if ((sc.told || []).length || c.name === "catch_up") { drawDevice(); drawWho(); }
     if (sc.checkout && sc.approved) checkout = sc.checkout;
     if (sc.card && sc.card.tone === "stop") tone = "stop";
     if (sc.card) showResult(res);
@@ -480,14 +587,18 @@ async function payCheckout(hint) {
 
 // --- people, script, input --------------------------------------------------
 function drawWho() {
-  $("#speakingAs").textContent = `${speaker}, on the ${DEVICES[PEOPLE[speaker] || device].name}`;
-  $("#who").innerHTML = Object.keys(PEOPLE).map(p =>
-    `<button class="${p === speaker ? "on" : ""}" onclick="setWho('${p}')">${p}</button>`).join("");
+  $("#speakingAs").innerHTML = `<b>${esc(speaker)}</b> is speaking, on the ${esc(DEVICES[PEOPLE[speaker] || device].name)}`;
+  $("#who").innerHTML = Object.keys(PEOPLE).map(p => {
+    const n = waiting[p] && p !== "Rose" && p !== "Grace";
+    return `<button class="person${p === speaker ? " on" : ""}" onclick="setWho('${p}')" aria-pressed="${p === speaker}">
+      <span class="av">${p[0]}</span><span><b>${p}</b><small>${esc(ABOUT[p].who)} · ${esc(DEVICES[PEOPLE[p]].name)}</small>
+      <span class="say">${esc(ABOUT[p].say)}</span>${n ? '<span class="stk caps">Note waiting</span>' : ""}</span></button>`;
+  }).join("");
 }
 window.setWho = p => { speaker = p; drawWho(); if (PEOPLE[p] !== device) { device = PEOPLE[p]; drawDevice(); } };
 function drawNext() {
   $("#next").innerHTML = step < SCRIPT.length
-    ? `<button class="btn" id="go">▶ Next scene</button> <kbd>→</kbd> <span>${esc(SCRIPT[step][0])}:</span> <q>${esc(SCRIPT[step][1])}</q>`
+    ? `<button class="btn" id="go">Next scene</button> <kbd>→</kbd> <span>${esc(SCRIPT[step][0])}:</span> <q>${esc(SCRIPT[step][1])}</q>`
     : `<span>End of the scripted scenes. Keep talking, or reload for a fresh household.</span>`;
   const go = document.getElementById("go"); if (go) go.onclick = nextScene;
 }
@@ -508,8 +619,14 @@ $("#said").addEventListener("keydown", e => { if (e.key === "Enter") send(); });
 document.addEventListener("keydown", e => {
   if (document.activeElement === $("#said")) return;
   if (e.key === "ArrowRight") film ? typeNext() : nextScene();
-  if (film && (e.key === "t" || e.key === "T")) document.body.classList.toggle("wire-on");
+  if (e.key === "t" || e.key === "T") hood();
 });
+function hood(on) {
+  const v = document.body.classList.toggle("wire-on", on);
+  $("#hood").setAttribute("aria-pressed", String(v));
+}
+$("#hood").onclick = () => hood();
+$("#hoodx").onclick = () => hood(false);
 // Film mode: the next person's line is typed into the box and sent, as a
 // person at the keyboard would; the model planner then reads it like any
 // other line. Nothing on screen says which line comes next.
@@ -567,7 +684,7 @@ async function connect() {
   log("req", "GET /.well-known/oauth-protected-resource", "RFC 9728 discovery", "");
   token = await connect();
   if (!token) return;
-  $("#auth").textContent = "OAuth 2.1 + PKCE ✓"; $("#auth").classList.add("ok");
+  $("#auth").textContent = "OAuth 2.1 + PKCE, signed in"; $("#auth").classList.add("ok");
   const cfg = await (await fetch("/sim/config", {headers: {Authorization: "Bearer " + token}})).json();
   ttsProvider = cfg.tts;
   $("#voice").textContent = "voice: " + ({polly: "Amazon Polly neural", piper: "Piper neural (offline)", browser: "browser voice"}[cfg.tts] || cfg.tts);

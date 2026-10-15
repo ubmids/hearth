@@ -41,10 +41,7 @@
     --green:#4FD19A; --on-green:#04140D;
   }
   /* A phone in portrait: the card is read at arm's length, not across a room. */
-  @media (max-width:560px){
-    :root{--u:1px; --f-head:13px; --f-title:28px; --f-body:18px; --f-row:17px; --f-meta:14px;
-          --pad:14px; --b:2px; --r:1.5px; --mk:20px}
-  }
+
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);
     font-family:"Plex Condensed","IBM Plex Sans Condensed","Arial Narrow",sans-serif;
@@ -100,6 +97,22 @@
   .lf .t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .lf .mono{white-space:nowrap;flex:none}
   .empty{padding:var(--pad);font-size:var(--f-body)}
+  /* A phone in portrait: the card is read at arm's length, not across a room,
+     so each fact sits under its heading instead of beside it. */
+  @media (max-width:560px){
+    :root{--u:1px; --f-head:13px; --f-title:28px; --f-body:18px; --f-row:17px; --f-meta:14px;
+          --pad:14px; --b:2px; --r:1.5px; --mk:20px}
+    .top{flex-direction:column-reverse;align-items:flex-start;gap:8px}
+    .rows{grid-template-columns:var(--mk) minmax(0,1fr)}
+    .rows li > .mk{grid-row:span 2}
+    .rows li > .k,.rows li > .v{grid-column:2;padding-left:10px;padding-right:0}
+    .rows li > .k{padding-bottom:2px}
+    .rows li > .v{border-top:0;padding-top:0}
+    .lf{flex-direction:column;align-items:flex-start;gap:4px}
+    .home .lh i{display:none}
+    .lh span:last-child{white-space:normal;text-align:right}
+  }
+  .lh i{font-style:normal}
   @media (prefers-reduced-motion:no-preference){
     .label{animation:in .22s ease-out}
     @keyframes in{from{opacity:0;transform:translateY(6px)}}
@@ -170,9 +183,9 @@
     const eb = String(c.eyebrow || "");
     if (kind === "med") {
       const m = eb.match(/^(.+?) · (.+)$/);
-      return [`Hearth · for ${m ? m[1] : eb || "the family"}`, m ? m[2] : "Medicine"];
+      return [["Hearth", ` · for ${m ? m[1] : eb || "the family"}`], m ? m[2] : "Medicine"];
     }
-    return ["Hearth · household", eb];
+    return [["Hearth", " · household"], eb];
   }
 
   function row(i, refusalCard, overruling) {
@@ -212,7 +225,7 @@
     const title = String(c.title || "");
     root.className = `label ${kind} ${c.pattern === "list" ? "list" : "card"}`;
     root.innerHTML = `
-      <div class="lh"><span>${esc(hl)}</span><span>${esc(hr)}</span></div>
+      <div class="lh"><span>${esc(hl[0])}<i>${esc(hl[1])}</i></span><span>${esc(hr)}</span></div>
       <div class="lb">
         <div class="top"><h1 class="${title.length > 30 ? "long" : ""}">${esc(title)}</h1><span class="stk ${tone}">${esc(word)}</span></div>
         ${c.body ? `<p class="body">${esc(c.body)}</p>` : ""}
