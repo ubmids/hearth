@@ -97,7 +97,9 @@ async def main(base, out):
     os.makedirs(out, exist_ok=True)
     async with async_playwright() as p:
         browser = await p.chromium.launch(**({"executable_path": CHROME} if CHROME else {}))
-        page = await browser.new_page(viewport={"width": 1600, "height": 900}, device_scale_factor=2)
+        # The device clock is the browser's: give it Hearth's zone (HEARTH_TZ).
+        page = await browser.new_page(viewport={"width": 1600, "height": 900}, device_scale_factor=2,
+                                      timezone_id=os.getenv("HEARTH_TZ") or None)
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         await page.goto(f"{base}/alexa?mute=1")
