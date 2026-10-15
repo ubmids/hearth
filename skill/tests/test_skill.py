@@ -158,7 +158,7 @@ def test_the_household_on_a_real_skill_handler():
     assert t.speech.endswith("Your warfarin is once a day, so not another until tomorrow."), t.speech
     e = verbatim(t, "give_dose")
     assert e["outcome"] == "refused" and e["session"] == t.attrs["mcp_session"], e
-    assert t.card["title"] == "Already taken today" and t.card["toneColor"] == "#ff6b4a"
+    assert t.card["title"] == "Already taken today" and t.card["toneColor"] == "#C8201A"
     assert f"record #{e['seq']} refused" in t.card["source"], t.card["source"]
     attrs = t.attrs
 
