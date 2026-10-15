@@ -100,17 +100,17 @@
   /* A phone in portrait: the card is read at arm's length, not across a room,
      so each fact sits under its heading instead of beside it. */
   @media (max-width:560px){
-    :root{--u:1px; --f-head:13px; --f-title:28px; --f-body:18px; --f-row:17px; --f-meta:14px;
+    body:not(.show){--u:1px; --f-head:13px; --f-title:28px; --f-body:18px; --f-row:17px; --f-meta:14px;
           --pad:14px; --b:2px; --r:1.5px; --mk:20px}
-    .top{flex-direction:column-reverse;align-items:flex-start;gap:8px}
-    .rows{grid-template-columns:var(--mk) minmax(0,1fr)}
-    .rows li > .mk{grid-row:span 2}
-    .rows li > .k,.rows li > .v{grid-column:2;padding-left:10px;padding-right:0}
-    .rows li > .k{padding-bottom:2px}
-    .rows li > .v{border-top:0;padding-top:0}
-    .lf{flex-direction:column;align-items:flex-start;gap:4px}
-    .home .lh i{display:none}
-    .lh span:last-child{white-space:normal;text-align:right}
+    body:not(.show) .top{flex-direction:column-reverse;align-items:flex-start;gap:8px}
+    body:not(.show) .rows{grid-template-columns:var(--mk) minmax(0,1fr)}
+    body:not(.show) .rows li > .mk{grid-row:span 2}
+    body:not(.show) .rows li > .k,body:not(.show) .rows li > .v{grid-column:2;padding-left:10px;padding-right:0}
+    body:not(.show) .rows li > .k{padding-bottom:2px}
+    body:not(.show) .rows li > .v{border-top:0;padding-top:0}
+    body:not(.show) .lf{flex-direction:column;align-items:flex-start;gap:4px}
+    body:not(.show) .home .lh i{display:none}
+    body:not(.show) .lh span:last-child{white-space:normal;text-align:right}
   }
   .lh i{font-style:normal}
   @media (prefers-reduced-motion:no-preference){
@@ -209,7 +209,16 @@
       <span class="v"><span class="d">${detail}</span>${i.meta ? `<span class="meta">${esc(i.meta)}</span>` : ""}</span></li>`;
   }
 
+  let last = null, resizing = 0;
+  // The host may resize the view (a rotated phone, a resized window): draw the
+  // label again so the rows that fit are counted afresh.
+  window.addEventListener("resize", () => {
+    clearTimeout(resizing);
+    resizing = setTimeout(() => { if (last) render(last); }, 120);
+  });
+
   function render(result) {
+    last = result;
     const sc = (result && result.structuredContent) || {};
     const c = sc.card;
     if (!c) {
@@ -270,6 +279,8 @@
     if (ctx.theme) document.body.classList.toggle("dark", ctx.theme === "dark");
     // A phone host lets the card take the height it needs.
     if (ctx.displayMode === "flow" || ctx.deviceClass === "phone") document.body.classList.add("flow");
+    // An Echo Show keeps the 768x480 canvas, scaled, however small it is drawn.
+    if (/^echo-show/.test(ctx.deviceClass || "")) document.body.classList.add("show");
   }
 
   request("ui/initialize", {
