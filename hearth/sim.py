@@ -281,7 +281,9 @@ def model_label(provider: str) -> str:
                     or os.getenv("HEARTH_LLM_BASE_URL") or "").hostname or ""
     # A small open model on the same laptop is worth saying out loud: the
     # safety is in Hearth's server, so the planner does not have to be big.
-    local = host in ("localhost", "127.0.0.1", "::1")
+    # HEARTH_SIM_LLM_LOCAL=0 for a loopback proxy in front of a hosted model.
+    local = os.getenv("HEARTH_SIM_LLM_LOCAL",
+                      "1" if host in ("localhost", "127.0.0.1", "::1") else "0") == "1"
     return f"model:{_openai_model()}" + (" on this machine" if local else "")
 
 

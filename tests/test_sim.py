@@ -75,6 +75,11 @@ def test_the_header_says_when_the_model_runs_on_this_machine():
         assert sim.model_label("openai") == "model:qwen2.5:7b-instruct on this machine"
         os.environ["HEARTH_SIM_LLM_BASE_URL"] = "https://api.example.com/v1"
         assert sim.model_label("openai") == "model:qwen2.5:7b-instruct"
+        # A loopback relay in front of a hosted model says so with LOCAL=0.
+        os.environ["HEARTH_SIM_LLM_BASE_URL"] = "http://127.0.0.1:9/v1"
+        os.environ["HEARTH_SIM_LLM_LOCAL"] = "0"
+        assert sim.model_label("openai") == "model:qwen2.5:7b-instruct"
+        os.environ.pop("HEARTH_SIM_LLM_LOCAL")
     finally:
         for k, v in keep.items():
             os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
