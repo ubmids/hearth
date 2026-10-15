@@ -120,6 +120,15 @@ def calls_for(intent: str, h, who: str, cfg) -> list[dict]:
             "domain": "diet", "slot": rule, "about": mom}}]
     if intent == "RecordIntent":
         return [{"name": "record", "arguments": {"limit": 8}}]
+    if intent == "HandoverIntent":
+        return [{"name": "handover", "arguments": {
+            "note": slot(h, "note") or "", "given_by": who}}]
+    if intent == "ShoppingListIntent":
+        item = slot(h, "item")
+        return [{"name": "shopping_list", "arguments": (
+            {"add": item, "asked_by": who} if item else {"asked_by": who})}]
+    if intent == "OrderListIntent":
+        return [{"name": "reorder", "arguments": {"item": "the list", "asked_by": who}}]
     return []
 
 
@@ -213,7 +222,8 @@ def pay(hearth: Hearth, hint: dict | None, who: str):
 # --- handlers ------------------------------------------------------------
 sb = SkillBuilder()
 INTENTS = ("GiveDoseIntent", "CheckDoseIntent", "CatchUpIntent", "WhyIntent",
-           "ArrangeIntent", "ReorderIntent", "CanHaveIntent", "RecordIntent")
+           "ArrangeIntent", "ReorderIntent", "CanHaveIntent", "RecordIntent",
+           "HandoverIntent", "ShoppingListIntent", "OrderListIntent")
 
 
 @sb.request_handler(can_handle_func=is_request_type("LaunchRequest"))

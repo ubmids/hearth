@@ -213,6 +213,25 @@ def test_a_brand_name_resolved_by_alexa_still_reaches_the_refusal():
     print("PASS Coumadin and warfarin sodium are refused through the skill")
 
 
+def test_grace_hands_over_through_the_skill_and_tom_hears_it():
+    """Grace's voice is recognised (personId), so the handover is hers; the
+    list item it adds can then be ordered by name of the list."""
+    t = say("HandoverIntent", {"note": "mom ate half her lunch she was a bit dizzy "
+                                       "after her walk and we're nearly out of ensure"},
+            person="amzn1.ask.person.GRACE")
+    assert t.speech.startswith("Thanks, Grace. I've left the handover for"), t.speech
+    assert "put ensure on the shopping list" in t.speech.lower(), t.speech
+    assert "flagged one thing for Ada" in t.speech, t.speech
+    verbatim(t, "handover")
+    t = say("CatchUpIntent", device="toms-echo-dot")
+    assert "Grace handed over" in t.speech, t.speech
+    t = say("ShoppingListIntent", device="adas-phone")
+    assert "ensure, from grace" in t.speech.lower(), t.speech
+    t = say("OrderListIntent", device="adas-phone")
+    assert "Ensure Original, 24 bottles" in t.speech, t.speech
+    print("PASS a handover through the skill reaches Tom and the list")
+
+
 def test_this_is_tom_changes_who_is_speaking_for_the_session():
     t = say("IAmIntent", {"name": "tom"})
     assert t.speech == "Hello, Tom." and t.attrs["speaker"] == "Tom"

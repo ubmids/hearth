@@ -146,6 +146,53 @@
           ]
         },
         {
+          "name": "HandoverIntent",
+          "slots": [
+            {
+              "name": "note",
+              "type": "CATCH_ALL"
+            }
+          ],
+          "samples": [
+            "i'm off {note}",
+            "i'm off now {note}",
+            "handover {note}",
+            "here's my handover {note}",
+            "end of my shift {note}",
+            "before i go {note}",
+            "i'm heading off {note}"
+          ]
+        },
+        {
+          "name": "ShoppingListIntent",
+          "slots": [
+            {
+              "name": "item",
+              "type": "CATCH_ALL"
+            }
+          ],
+          "samples": [
+            "what's on the shopping list",
+            "what's on the list",
+            "read me the shopping list",
+            "read me the list",
+            "put {item} on the list",
+            "put {item} on the shopping list",
+            "add {item} to the list",
+            "add {item} to the shopping list"
+          ]
+        },
+        {
+          "name": "OrderListIntent",
+          "slots": [],
+          "samples": [
+            "order what's on the list",
+            "order what's on the shopping list",
+            "order the shopping list",
+            "buy what's on the list"
+          ]
+        },
+        {
           "name": "RecordIntent",
           "slots": [],
           "samples": [
@@ -526,6 +573,26 @@
             {
               "name": {
                 "value": "tom is visiting on sunday"
+              }
+            },
+            {
+              "name": {
+                "value": "mom ate half her lunch she was a bit dizzy after her walk and we're nearly out of ensure"
+              }
+            },
+            {
+              "name": {
+                "value": "wipes"
+              }
+            },
+            {
+              "name": {
+                "value": "ensure"
+              }
+            },
+            {
+              "name": {
+                "value": "incontinence pads"
               }
             }
           ]
