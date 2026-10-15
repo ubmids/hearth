@@ -1,41 +1,64 @@
 <!doctype html>
 <!-- Title cards and lower thirds for the demo video, rendered to PNG by
      demo/rough_cut.py: cards.html?card=<name>[&text=...][&sub=...][&tag=...].
-     Same palette as the simulated Alexa+ page. -->
+     Drawn as labels, like every other surface (design/DESIGN.md, direction C):
+     paper, 3 px rules, caps only on headers and stickers. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Hearth video cards</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#0b0d10;--ink:#eef2f6;--dim:#97a3b1;--amber:#ffc04d;--red:#ff6b5e;--green:#5fd38d;--line:#232a33;--cyan:#38d3ff}
+  :root{--desk:#ECECE7;--paper:#FFFFFF;--rule:#111111;--ink:#0B0B0B;--ink-2:#3A3A3A;--ink-3:#595954;
+        --yellow:#FFD43B;--on-yellow:#0B0B0B;--blue:#1F4FB5;--on-blue:#FFFFFF;--green:#006B47;--on-green:#FFFFFF;
+        --sans:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
   *{box-sizing:border-box}
-  html,body{margin:0;width:1920px;height:1080px;font-family:"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--ink)}
-  body.full{background:radial-gradient(1200px 700px at 20% 10%,#16202b 0,#0b0d10 60%) var(--bg)}
+  html,body{margin:0;width:1920px;height:1080px;font-family:var(--sans);color:var(--ink)}
+  body.full{background:var(--desk)}
   body.lower{background:transparent}
-  .logo{font-weight:800;font-size:44px;letter-spacing:-.02em}
-  .logo b{color:var(--amber)}
-  .wrap{position:absolute;inset:0;padding:110px 140px;display:flex;flex-direction:column;justify-content:center;gap:34px}
-  h1{margin:0;font-size:88px;line-height:1.04;letter-spacing:-.025em;font-weight:800;max-width:1500px}
-  h1 em{font-style:normal;color:var(--amber)}
-  p.sub{margin:0;font-size:38px;line-height:1.35;color:var(--dim);max-width:1500px}
-  .stats{display:grid;grid-template-columns:1fr 1fr;gap:40px;max-width:1600px}
-  .stat{border:1px solid var(--line);border-radius:22px;padding:40px 44px;background:rgba(255,255,255,.02)}
-  .stat .n{font-size:110px;font-weight:800;letter-spacing:-.03em;color:var(--amber);line-height:1}
-  .stat .t{font-size:34px;line-height:1.35;margin-top:18px}
-  .stat .s{font-size:24px;color:var(--dim);margin-top:14px}
-  .tag{position:absolute;top:44px;right:56px;font:700 22px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#1b1300;background:var(--amber);padding:12px 16px;border-radius:8px}
-  .tag.todo{background:var(--red);color:#fff}
-  .term{font:400 30px/1.55 ui-monospace,Menlo,monospace;background:#05070a;border:1px solid var(--line);border-radius:18px;padding:34px 40px;max-width:1640px;white-space:pre-wrap}
-  .term .ok{color:var(--green)} .term .dim{color:var(--dim)} .term .c{color:var(--cyan)}
-  .badges{display:flex;flex-wrap:wrap;gap:16px}
-  .badge{font:600 28px/1 ui-monospace,Menlo,monospace;padding:16px 20px;border:1px solid var(--line);border-radius:12px;color:var(--ink);background:rgba(255,255,255,.03)}
-  .third.right{left:auto;right:64px;bottom:auto;top:430px;max-width:820px}
-  .third.low{bottom:22px}
-  .third{position:absolute;left:56px;bottom:150px;max-width:1200px;background:rgba(9,11,14,.92);border:1px solid #2c3540;border-left:8px solid var(--amber);border-radius:14px;padding:22px 30px 24px}
-  .third .k{font:700 20px/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin-bottom:10px}
-  .third .v{font-size:40px;font-weight:700;line-height:1.2}
-  .third .w{font-size:26px;color:var(--dim);margin-top:8px;line-height:1.3}
-  .foot{position:absolute;left:140px;bottom:70px;font-size:26px;color:var(--dim)}
+  .caps{text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .brand{display:flex;align-items:center;gap:14px;font-weight:700;font-size:44px;line-height:1}
+  .brand svg{width:44px;height:44px}
+
+  /* a full-screen card: one label on the desk, inside a 96 px safe margin */
+  .wrap{position:absolute;inset:96px 140px;display:flex;flex-direction:column;justify-content:center}
+  .label{background:var(--paper);border:5px solid var(--rule)}
+  .lh{display:flex;justify-content:space-between;align-items:center;padding:20px 36px;border-bottom:5px solid var(--rule);font-size:28px}
+  .lb{padding:44px 36px 48px}
+  h1{margin:0;font-size:104px;line-height:1.02;letter-spacing:-.01em;font-weight:700;max-width:1500px;text-wrap:balance}
+  p.sub{margin:28px 0 0;font-size:44px;line-height:1.3;color:var(--ink-2);max-width:1500px}
+
+  .stat{display:grid;grid-template-columns:420px 1fr;gap:40px;align-items:baseline;padding:34px 36px;border-top:4px solid var(--rule)}
+  .stat:first-child{border-top:0}
+  .stat .n{font-size:132px;font-weight:700;line-height:.95;letter-spacing:-.02em}
+  .stat .t{font-size:44px;line-height:1.25}
+  .stat .s{font-size:30px;color:var(--ink-3);margin-top:10px}
+
+  .term{font:400 34px/1.6 var(--mono);white-space:pre-wrap;margin:0}
+  .term .ok{color:var(--green);font-weight:600} .term .dim{color:var(--ink-3)}
+  .badges{display:flex;flex-wrap:wrap;gap:14px;padding:26px 36px 32px;border-top:5px solid var(--rule)}
+  .stk{font-size:26px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1;padding:12px 14px}
+  .stk.out{box-shadow:inset 0 0 0 3px var(--rule)}
+  .stk.blue{background:var(--blue);color:var(--on-blue)}
+
+  .close h1{font-size:76px}
+  .close .url{font:600 40px var(--mono);margin-top:34px}
+  .foot{position:absolute;left:140px;right:140px;bottom:56px;font-size:30px;color:var(--ink-2)}
+
+  /* placeholders are marked so they cannot be mistaken for the final cut */
+  .tag{position:absolute;top:44px;right:56px;font-size:24px;padding:12px 16px;line-height:1;
+       background:var(--paper);box-shadow:inset 0 0 0 3px var(--rule)}
+  .tag.todo{background:var(--rule);color:var(--paper);box-shadow:none}
+
+  /* lower thirds: a small household label. "right" sits under the device in
+     film mode's middle column; "low" sits bottom left, clear of the traffic. */
+  .third{position:absolute;max-width:1000px;background:var(--paper);border:4px solid var(--rule)}
+  .third.right{left:368px;bottom:36px;max-width:900px}
+  .third.low{left:96px;bottom:64px}
+  .third .k{padding:10px 20px;font-size:22px;border-bottom:4px solid var(--rule);background:var(--rule);color:var(--paper)}
+  .third .v{padding:12px 20px 0;font-size:38px;font-weight:700;line-height:1.15}
+  .third .w{padding:4px 20px 0;font-size:28px;color:var(--ink-2);line-height:1.3}
+  .third .pad{height:14px}
 </style>
 </head>
 <body>
@@ -43,28 +66,33 @@
 const q = new URLSearchParams(location.search);
 const card = q.get("card") || "close", text = q.get("text") || "", sub = q.get("sub") || "", tag = q.get("tag") || "";
 const esc = s => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const ARCH = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 27V14a9 9 0 0 1 18 0v13" fill="none" stroke="currentColor" stroke-width="3.2"/><path d="M4 27.5h24" stroke="currentColor" stroke-width="3.2"/><rect x="13" y="18" width="6" height="9" fill="currentColor"/></svg>';
+const brand = `<span class="brand">${ARCH}hearth</span>`;
 const H = {
-  third: () => `<div class="third ${esc(q.get("pos") || "right")}"><div class="k">${esc(tag || "hearth")}</div><div class="v">${esc(text)}</div>${sub ? `<div class="w">${esc(sub)}</div>` : ""}</div>`,
-  stats: () => `<div class="wrap"><div class="logo">hearth<b>.</b></div>
-    <div class="stats">
-      <div class="stat"><div class="n">63M</div><div class="t">Americans caring for a family member, nearly 50% more than in 2015</div><div class="s">AARP and the National Alliance for Caregiving, 2025</div></div>
-      <div class="stat"><div class="n">1 in 3</div><div class="t">older adults' emergency hospitalisations for an overdose involve warfarin</div><div class="s">Budnitz et al., NEJM 2011</div></div>
+  third: () => `<div class="third ${esc(q.get("pos") || "right")}"><div class="k caps">${esc(tag || "hearth")}</div><div class="v">${esc(text)}</div>${sub ? `<div class="w">${esc(sub)}</div>` : ""}<div class="pad"></div></div>`,
+  stats: () => `<div class="wrap"><div class="label">
+      <div class="lh"><span class="caps">Why this matters</span>${brand}</div>
+      <div class="stat"><div class="n">63M</div><div><div class="t">Americans care for a family member, nearly 50% more than in 2015</div><div class="s">AARP and the National Alliance for Caregiving, 2025</div></div></div>
+      <div class="stat"><div class="n">1 in 3</div><div><div class="t">older adults' emergency hospitalisations for an overdose involve warfarin</div><div class="s">Budnitz et al., NEJM 2011</div></div></div>
     </div></div>`,
-  slate: () => `<div class="wrap"><div class="logo">hearth<b>.</b></div><h1>${esc(text)}</h1>${sub ? `<p class="sub">${esc(sub)}</p>` : ""}</div>`,
-  tech: () => `<div class="wrap"><div class="logo">hearth<b>.</b> <span style="color:var(--dim);font-weight:500;font-size:32px">the server under the voice</span></div>
-    <div class="term" id="term"></div>
-    <div class="badges"><span class="badge">MCP 2025-11-25</span><span class="badge">Streamable HTTP</span><span class="badge">OAuth 2.1 + PKCE</span><span class="badge">MCP Apps card</span><span class="badge">UCP checkout</span><span class="badge">Agent Skill</span><span class="badge">signed record</span></div></div>`,
-  close: () => `<div class="wrap"><div class="logo" style="font-size:120px">hearth<b>.</b></div>
-    <h1 style="font-size:64px;font-weight:700">The memory and the conscience<br>of a family caring for someone.</h1>
-    <p class="sub">github.com/ubmids/hearth &nbsp;·&nbsp; an Alexa+ add-on, built as a self-hosted MCP server</p></div>
+  slate: () => `<div class="wrap"><div class="label"><div class="lh"><span class="caps">Hearth · household</span>${brand}</div>
+      <div class="lb"><h1>${esc(text)}</h1>${sub ? `<p class="sub">${esc(sub)}</p>` : ""}</div></div></div>`,
+  tech: () => `<div class="wrap"><div class="label"><div class="lh"><span class="caps">Under the hood</span>${brand}</div>
+      <div class="lb"><pre class="term" id="term"></pre></div>
+      <div class="badges">${["MCP 2025-11-25", "Streamable HTTP", "OAuth 2.1 + PKCE", "MCP Apps card", "UCP checkout", "Agent Skill", "Signed record"]
+        .map(b => `<span class="stk out">${b}</span>`).join("")}</div></div></div>`,
+  close: () => `<div class="wrap close"><div class="label"><div class="lh"><span class="caps">Hearth · for the family</span><span class="stk blue">An Alexa+ add-on</span></div>
+      <div class="lb"><div class="brand" style="font-size:120px;gap:28px"><svg viewBox="0 0 32 32" style="width:110px;height:110px" aria-hidden="true">${ARCH.slice(ARCH.indexOf(">") + 1, -6)}</svg>hearth</div>
+      <h1 style="margin-top:40px">The memory and the conscience of a family caring for someone.</h1>
+      <div class="url">github.com/ubmids/hearth</div></div></div></div>
     <div class="foot">Alexa+ is simulated in this video: add-on tools are available to select partners only. Ride and pharmacy are sandboxes.</div>`,
 };
 document.body.className = card === "third" ? "lower" : "full";
-document.body.innerHTML = (H[card] || H.slate)() + (tag && card !== "third" ? `<div class="tag ${q.get("todo") ? "todo" : ""}">${esc(tag)}</div>` : "");
+document.body.innerHTML = (H[card] || H.slate)() + (tag && card !== "third" ? `<div class="tag caps ${q.get("todo") ? "todo" : ""}">${esc(tag)}</div>` : "");
 if (card === "tech") {
   // Lines from scripts/conformance.sh, passed in as text (one per line).
   const lines = (text || "PASS server-initialize\nPASS ping\nPASS tools-list\nPASS resources-list\nPASS server-sse-multiple-streams\nPASS dns-rebinding-protection").split("\n");
-  document.getElementById("term").innerHTML = `<span class="dim">$</span> <span class="c">scripts/conformance.sh</span>  <span class="dim"># @modelcontextprotocol/conformance, spec 2025-11-25</span>\n`
+  document.getElementById("term").innerHTML = `<span class="dim">$ scripts/conformance.sh\n# the official @modelcontextprotocol/conformance suite, spec 2025-11-25</span>\n`
     + lines.map(l => l.startsWith("PASS") ? `<span class="ok">PASS</span>${esc(l.slice(4))}` : esc(l)).join("\n");
 }
 </script>

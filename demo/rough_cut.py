@@ -54,14 +54,14 @@ THIRDS = [
     ("hero", 0.0, 4.5, "Simulated Alexa+", "Hearth, an Alexa+ add-on on MCP 2025-11-25", ""),
     ("hero", "traffic-on", "traffic-off", "MCP traffic, live", "The server refused it, not the model", ""),
     ("handover", 0.5, 9.0, "One sentence", "The handover, the shopping list, and a flag",
-     "to the person with the say over Mom's health"),
+     "To the person with the say over Mom's health"),
     ("catchup", 0.5, 8.0, "Memory", "Across sessions, people and devices", "Tom is two states away"),
     ("arrange", 0.5, 8.0, "One request", "Calendar, rota, ride, family board, phone",
-     "the ride provider is a sandbox"),
+     "The ride provider is a sandbox"),
     ("order", 0.5, 8.0, "The list Grace started", "Paid the Alexa+ way: UCP checkout",
-     "sandbox pharmacy, no card charged"),
+     "Sandbox pharmacy, no card charged"),
     ("record", 0.5, 8.0, "An honest record", "Every call signed as it happens",
-     "and a receipt kept off the server"),
+     "With a receipt kept off the server"),
 ]
 
 
@@ -98,6 +98,7 @@ async def render_cards(specs: dict, out: pathlib.Path):
         page = await b.new_page(viewport={"width": W, "height": H})
         for name, q in specs.items():
             await page.goto((HERE / "cards.html").as_uri() + "?" + urlencode(q))
+            await page.evaluate("document.fonts.ready")       # the label type
             await page.wait_for_timeout(150)
             await page.screenshot(path=str(out / f"{name}.png"),
                                   omit_background=q.get("card") == "third")
@@ -254,8 +255,8 @@ def main(take: pathlib.Path, inserts: pathlib.Path, skip=()):
                             "text": "63M Americans care for a family member (AARP 2025)",
                             "sub": "Warfarin is in 1 in 3 overdose hospitalisations of older adults (NEJM 2011)"}
     for i, (seg, a, b, tag, text, sub) in enumerate(THIRDS):
-        # Film mode leaves the right half empty, except while the traffic
-        # panel is out; then the third sits low, over the input box.
+        # Film mode's middle column has room under the device; while the
+        # traffic panel is out, the third sits low, bottom left.
         specs[f"third{i}"] = {"card": "third", "tag": tag, "text": text, "sub": sub,
                               "pos": "low" if a == "traffic-on" else "right"}
     asyncio.run(render_cards(specs, cut.work))
