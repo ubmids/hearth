@@ -289,27 +289,65 @@ def _timeout() -> float:
     return float(os.getenv("HEARTH_SIM_LLM_TIMEOUT", "12"))
 
 
+def _json_calls_prompt(tools) -> str:
+    """The tool list as text, for a chat model with no tool-calling API."""
+    lines = ["You have these Hearth tools. Reply with ONLY a JSON object of the "
+             'form {"calls": [{"name": "<tool>", "arguments": {...}}]} and '
+             "nothing else."]
+    for t in tools:
+        props = t["inputSchema"].get("properties", {})
+        need = set(t["inputSchema"].get("required", []))
+        args = ", ".join(f"{k}{'' if k in need else '?'}: {v.get('type', 'string')}"
+                         for k, v in props.items())
+        lines.append(f"- {t['name']}({args}): {t['description']}")
+    return "\n".join(lines)
+
+
+def _parse_json_calls(text: str) -> list[dict]:
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if not m:
+        return []
+    data = json.loads(m.group(0))
+    calls = data.get("calls", [data] if "name" in data else [])
+    return [{"name": c["name"], "arguments": c.get("arguments") or {}}
+            for c in calls if isinstance(c, dict) and c.get("name")]
+
+
 def plan_openai(said, speaker, tools, context=None):
-    """Plan with any OpenAI-compatible chat completions endpoint."""
+    """Plan with any OpenAI-compatible chat completions endpoint.
+
+    Tool calling first. A model served without tool support (Ollama says
+    "does not support tools") is asked for the same calls as JSON instead,
+    with the same tool list as text; HEARTH_SIM_LLM_TOOLS=json forces that.
+    Either way Hearth's guards in plan() still apply to what comes back.
+    """
     import httpx
     base = os.getenv("HEARTH_SIM_LLM_BASE_URL") or os.getenv("HEARTH_LLM_BASE_URL")
     key = os.getenv("HEARTH_SIM_LLM_API_KEY") or os.getenv("HEARTH_LLM_API_KEY")
-    fns = [{"type": "function", "function": {
-        "name": t["name"], "description": t["description"],
-        "parameters": t["inputSchema"]}} for t in tools]
-    r = httpx.post(f"{base.rstrip('/')}/chat/completions",
-                   headers={"Authorization": f"Bearer {key}"},
-                   json={"model": _openai_model(), "temperature": 0, "tools": fns,
-                         "messages": [
-                             {"role": "system", "content": _system()},
-                             {"role": "user",
-                              "content": _user_turn(said, speaker, context or {})}]},
-                   timeout=_timeout())
+    url = f"{base.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {key}"}
+    messages = [{"role": "system", "content": _system()},
+                {"role": "user", "content": _user_turn(said, speaker, context or {})}]
+    if os.getenv("HEARTH_SIM_LLM_TOOLS", "native").lower() != "json":
+        fns = [{"type": "function", "function": {
+            "name": t["name"], "description": t["description"],
+            "parameters": t["inputSchema"]}} for t in tools]
+        r = httpx.post(url, headers=headers, timeout=_timeout(), json={
+            "model": _openai_model(), "temperature": 0, "tools": fns,
+            "messages": messages})
+        if not (r.status_code == 400 and "support tools" in r.text):
+            r.raise_for_status()
+            calls = r.json()["choices"][0]["message"].get("tool_calls") or []
+            return [{"name": c["function"]["name"],
+                     "arguments": json.loads(c["function"].get("arguments") or "{}")}
+                    for c in calls]
+    messages[0] = {"role": "system",
+                   "content": _system() + "\n\n" + _json_calls_prompt(tools)}
+    r = httpx.post(url, headers=headers, timeout=_timeout(), json={
+        "model": _openai_model(), "temperature": 0, "messages": messages,
+        "response_format": {"type": "json_object"}})
     r.raise_for_status()
-    calls = r.json()["choices"][0]["message"].get("tool_calls") or []
-    return [{"name": c["function"]["name"],
-             "arguments": json.loads(c["function"].get("arguments") or "{}")}
-            for c in calls]
+    return _parse_json_calls(r.json()["choices"][0]["message"].get("content") or "")
 
 
 def bedrock_request(body: dict, now=None):
@@ -409,17 +447,46 @@ def warm_up(tools) -> bool:
 
 
 DOSE_TOOLS = ("give_dose", "check_dose")
+_DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def _keep_the_day_said(said, calls, rules):
+    """A model that converts "Thursday at 10" to a date can pick the wrong
+    date (qwen2.5-VL 7B sent a Monday). If the person named a weekday and the
+    model's ISO time falls on another day, the time goes to Hearth as said,
+    and Hearth resolves it. Returns (calls, whether anything was changed)."""
+    low = said.lower()
+    named = next((d for d in _DAYS if d in low), None)
+    if not named:
+        return calls, False
+    as_said = next((r["arguments"].get("when") for r in rules
+                    if r.get("name") == "arrange"), None)
+    out, moved = [], False
+    for c in calls:
+        when = str(c.get("arguments", {}).get("when", ""))
+        if c["name"] == "arrange" and re.match(r"\d{4}-\d{2}-\d{2}", when):
+            try:
+                day = dt.date.fromisoformat(when[:10]).weekday()
+            except ValueError:
+                day = None
+            if day is not None and _DAYS[day] != named:
+                c = {**c, "arguments": {**c["arguments"], "when": as_said or named}}
+                moved = True
+        out.append(c)
+    return out, moved
 
 
 def plan(said, speaker, tools, context=None) -> dict:
     """Utterance to tool calls: a model when one is configured, the offline
-    rules when not. Two things never depend on the model's reading, and the
-    label says when either stepped in:
+    rules when not. Three things never depend on the model's reading, and the
+    label says when any stepped in:
 
       - a question never records a dose (a give_dose on a question becomes
         check_dose);
       - a dose being taken always reaches give_dose (a 3B model once sent
-        "time for my warfarin" to `remember`, and the refusal never ran).
+        "time for my warfarin" to `remember`, and the refusal never ran);
+      - an appointment stays on the weekday the person said (a model once
+        turned "Thursday" into a Monday's date).
     """
     ctx = context or {}
     rules = plan_rules(said, speaker, ctx)
@@ -436,11 +503,13 @@ def plan(said, speaker, tools, context=None) -> dict:
                       "asked_by": speaker}}
                   if c["name"] == "give_dose" else c) for c in calls]
         guarded = True
+    calls, moved = _keep_the_day_said(said, calls, rules)
     if (rules[0].get("name") == "give_dose"
             and not any(c["name"] in DOSE_TOOLS for c in calls)):
         calls = [rules[0]] + [c for c in calls if c["name"] != "remember"]
         guarded = True
-    return {"planner": label + (" · dose guard" if guarded else ""), "calls": calls}
+    return {"planner": label + (" · dose guard" if guarded else "")
+            + (" · day as said" if moved else ""), "calls": calls}
 
 
 # --- voice ------------------------------------------------------------------

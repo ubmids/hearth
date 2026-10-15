@@ -130,6 +130,65 @@ class Stub(BaseHTTPRequestHandler):
         pass
 
 
+class NoTools(BaseHTTPRequestHandler):
+    """An Ollama-style server for a model with no tool support: a request with
+    `tools` gets the 400 Ollama sends; one without gets JSON content."""
+    seen = []
+
+    def do_POST(self):
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        NoTools.seen.append(body)
+        if "tools" in body:
+            out, code = json.dumps({"error": {"message": "registry.ollama.ai/library/"
+                                    "qwen2.5vl:7b does not support tools"}}).encode(), 400
+        else:
+            content = json.dumps({"calls": [{"name": "arrange", "arguments": {
+                "what": "cardiology", "when": "2026-10-19T10:00", "asked_by": "Ada"}}]})
+            out, code = json.dumps({"choices": [{"message": {"content": content}}]}).encode(), 200
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
+    def log_message(self, *a):
+        pass
+
+
+def test_a_model_without_tools_plans_in_json_and_keeps_the_day_said():
+    """qwen2.5-VL on Ollama has no tool calling, and it sent Monday's date for
+    "Thursday at 10". The planner asks it for JSON instead, and the day the
+    person said wins over the date the model made up."""
+    srv = HTTPServer(("127.0.0.1", 0), NoTools)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    keep = {k: os.environ.get(k) for k in ("HEARTH_SIM_LLM_BASE_URL", "HEARTH_SIM_LLM_API_KEY",
+                                            "HEARTH_SIM_LLM_MODEL", "HEARTH_SIM_LLM_PROVIDER")}
+    os.environ.update(HEARTH_SIM_LLM_BASE_URL=f"http://127.0.0.1:{srv.server_port}",
+                      HEARTH_SIM_LLM_API_KEY="k", HEARTH_SIM_LLM_MODEL="vl-7b",
+                      HEARTH_SIM_LLM_PROVIDER="openai")
+    NoTools.seen.clear()
+    try:
+        out = sim.plan("Alexa, Mom's cardiology moved to Thursday at 10. Sort it out.",
+                       "Ada", TOOLS)
+        assert out["calls"] == [{"name": "arrange", "arguments": {
+            "what": "cardiology", "when": "thursday at 10", "asked_by": "Ada"}}], out
+        assert out["planner"].endswith("· day as said"), out
+        first, second = NoTools.seen
+        assert "tools" in first and "tools" not in second
+        assert second["response_format"] == {"type": "json_object"}
+        assert "give_dose(medication: string, count?: integer" in second["messages"][0]["content"]
+        # A date that already agrees with the day said is left alone.
+        calls, moved = sim._keep_the_day_said(
+            "moved to Thursday at 10", [{"name": "arrange", "arguments": {
+                "what": "x", "when": "2026-10-22T10:00", "asked_by": "Ada"}}], [])
+        assert not moved and calls[0]["arguments"]["when"] == "2026-10-22T10:00"
+    finally:
+        srv.shutdown()
+        for k, v in keep.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+    print("PASS a model with no tool API plans in JSON, and the day said wins")
+
+
 def test_a_configured_model_plans_with_hearths_own_tool_list_and_falls_back():
     srv = HTTPServer(("127.0.0.1", 0), Stub)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
