@@ -23,7 +23,7 @@ PY
   cp "$src/config.json" "$work/lambda/"
   echo "config.json included (HEARTH_URL and token checked)"
 else
-  echo "no skill/lambda/config.json. Alexa-hosted skills have no environment variables, so make one first; a self-hosted Lambda can set HEARTH_URL and HEARTH_TOKEN instead." >&2
+  echo "no skill/lambda/config.json. For an Alexa-hosted skill, make one first (the skill reads its URL and token from it); a self-hosted Lambda can set HEARTH_URL and HEARTH_TOKEN as environment variables instead." >&2
 fi
 rm -f out/hearth-care-lambda.zip
 (cd "$work" && zip -qr - lambda) > out/hearth-care-lambda.zip

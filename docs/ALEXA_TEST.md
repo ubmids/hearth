@@ -86,7 +86,8 @@ console is at https://developer.amazon.com/alexa/console/ask.
 5. **Code.** *Code* tab → *Import Code* → choose `out/hearth-care-lambda.zip`
    → confirm it replaces `lambda/` files → *Deploy*. Wait for "Deployment
    successful". (Alexa-hosted runs Python 3.8; `skill/tests/test_skill.py`
-   passes on 3.8, see "Checks" below.) If *Import Code* is not offered, open
+   passes on 3.8, see "Checks" below. The skill reads its Hearth URL and
+   token from `lambda/config.json`, which is inside the ZIP.) If *Import Code* is not offered, open
    each file under `lambda/` and paste the matching file from `skill/lambda/`,
    and create `lambda/config.json` with *New File*.
 6. **Test tab.** *Test* → change "Skill testing is enabled in" from **Off** to

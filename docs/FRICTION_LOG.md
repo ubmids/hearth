@@ -11,7 +11,8 @@ Apps visuals, a checkout, cross-session memory and a simulated Alexa+ client,
 and every one of them is a place where the Alexa+ add-on documentation and the
 thing being built disagreed or went quiet. Source pages are linked. Two entries
 about the hackathon's track structure, rather than the developer platform, are
-kept separately at the end.
+kept separately at the end. Entry 12 comes from putting the same server
+behind a classic Alexa skill.
 
 ---
 
@@ -366,6 +367,47 @@ MCP client against the same server, so it is exercised, not just written.
 **Suggestion.** One paragraph on the add-ons home page: whether Alexa+ loads
 skills from an add-on at runtime and from where, and a different name for the
 onboarding skill (an "add-on builder skill") so the two stop colliding.
+
+---
+
+## 12. Alexa-hosted skills run Python 3.8, and the official MCP Python SDK needs 3.10
+
+**Severity: medium.** It decides how a skill can talk to an MCP server, and you
+find out after choosing.
+
+**Task attempted.** Make the classic Alexa skill in `skill/` an MCP client of
+Hearth, hosted the free way (Alexa-hosted, no AWS account), so the same MCP
+server can be shown on Amazon's own Alexa while Alexa+ add-on tools are
+partner-only.
+
+**Steps taken.** Wrote the skill handler with `ask-sdk-core`, planned to use
+the official MCP Python SDK as its client, then checked the Alexa-hosted
+runtime page before deploying. Ran the skill's test suite under a real
+Python 3.8.20 (`HEARTH_SERVER_PYTHON=… python3.8 skill/tests/test_skill.py`).
+
+**Expected.** That the hosting option the docs recommend for getting started
+would run a current Python, since the Alexa+ track is built around MCP and the
+reference MCP client for Python is the obvious way in.
+
+**Actual.** "You can build an Alexa-hosted skill with Node.js version 16.x or
+Python version 3.8 … you can't change it" ([Alexa-hosted skills][hosted]).
+Python 3.8 has been end-of-life since October 2024, and `mcp` on PyPI requires
+Python 3.10 or later, so the SDK cannot be installed there at all. Our first
+local run on 3.8 also failed in the test harness on `zoneinfo` (3.9+), a
+reminder of how much ordinary code assumes a newer runtime.
+
+**Workaround.** The skill's MCP client (`skill/lambda/hearth_client.py`) is
+written against the standard library only: `initialize`,
+`notifications/initialized` and `tools/call` over Streamable HTTP with the
+session header and the protocol-version header. All nine skill tests pass on
+3.8. A self-hosted Lambda on Python 3.12 is the alternative, at the cost of an
+AWS account.
+
+**Suggestion.** Offer a current Python (3.12 or later) for Alexa-hosted skills,
+or at least say on the hosted-skill page that the official MCP SDK will not run
+there, next to the Alexa+ pages that point skill builders at MCP.
+
+[hosted]: https://developer.amazon.com/en-US/docs/alexa/hosted-skills/build-a-skill-end-to-end-using-an-alexa-hosted-skill.html
 
 ---
 
