@@ -67,6 +67,20 @@ def test_a_handover_is_a_handover_even_when_it_mentions_a_dose_or_a_shortage():
     print("PASS handovers and the shared list route to their own tools")
 
 
+def test_the_header_says_when_the_model_runs_on_this_machine():
+    keep = {k: os.environ.get(k) for k in ("HEARTH_SIM_LLM_BASE_URL", "HEARTH_SIM_LLM_MODEL")}
+    try:
+        os.environ["HEARTH_SIM_LLM_MODEL"] = "qwen2.5:7b-instruct"
+        os.environ["HEARTH_SIM_LLM_BASE_URL"] = "http://localhost:11434/v1"
+        assert sim.model_label("openai") == "model:qwen2.5:7b-instruct on this machine"
+        os.environ["HEARTH_SIM_LLM_BASE_URL"] = "https://api.example.com/v1"
+        assert sim.model_label("openai") == "model:qwen2.5:7b-instruct"
+    finally:
+        for k, v in keep.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+    print("PASS a model on this machine is labelled as one")
+
+
 def test_the_model_is_told_the_household_date():
     """Without the date a model turned "Thursday at 10" into a Sunday."""
     turn = sim._user_turn("Cardiology moved to Thursday at 10", "Ada",
@@ -127,7 +141,7 @@ def test_a_configured_model_plans_with_hearths_own_tool_list_and_falls_back():
             "arguments": json.dumps({"medication": "warfarin", "asked_by": "Tom"})}},
             {"function": {"name": "not_a_tool", "arguments": "{}"}}]}
         out = sim.plan("did mom take it", "Tom", TOOLS)
-        assert out["planner"] == "model:stub-1 + skill:hearth-care", out
+        assert out["planner"] == "model:stub-1 on this machine + skill:hearth-care", out
         # The model is taught by the Agent Skill, the same one any other
         # assistant using Hearth loads, front matter stripped.
         system = STUB["seen"]["messages"][0]["content"]
@@ -266,7 +280,7 @@ def test_a_slow_local_model_gets_its_own_timeout_and_a_warm_up():
         assert out["planner"] == "offline rules" and out["calls"][0]["name"] == "check_dose", out
         os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "5"
         out = sim.plan("Has Mom had her warfarin today?", "Tom", TOOLS)
-        assert out["planner"] == "model:qwen-3b + skill:hearth-care", out
+        assert out["planner"] == "model:qwen-3b on this machine + skill:hearth-care", out
         os.environ["HEARTH_SIM_LLM_TIMEOUT"] = "0.2"
         assert sim.warm_up(TOOLS) is True, "warm-up used the short timeout"
         assert os.environ["HEARTH_SIM_LLM_TIMEOUT"] == "0.2", "warm-up leaked its timeout"
@@ -293,17 +307,17 @@ def test_a_dose_announcement_never_depends_on_the_model():
             json.dumps({"said": "Rose says: Alexa, time for my warfarin",
                         "speaker": "Rose"})}}]}
         out = sim.plan("Alexa, time for my warfarin", "Rose", TOOLS)
-        assert out == {"planner": "model:small + skill:hearth-care · dose guard",
+        assert out == {"planner": "model:small on this machine + skill:hearth-care · dose guard",
                        "calls": [{"name": "give_dose", "arguments": {
                            "medication": "warfarin", "given_by": "Rose"}}]}, out
         # A model that does route the dose itself is simply used.
         STUB["reply"] = {"tool_calls": [{"function": {"name": "give_dose", "arguments":
             json.dumps({"medication": "blood thinner", "given_by": "Rose"})}}]}
         out = sim.plan("Alexa, I'm just going to take my blood thinner.", "Rose", TOOLS)
-        assert out["planner"] == "model:small + skill:hearth-care", out
+        assert out["planner"] == "model:small on this machine + skill:hearth-care", out
         assert out["calls"][0]["arguments"]["medication"] == "blood thinner", out
         out = sim.plan("Mom finished the antibiotics.", "Ada", TOOLS)
-        assert out["planner"] == "model:small + skill:hearth-care", out
+        assert out["planner"] == "model:small on this machine + skill:hearth-care", out
     finally:
         for k in ("HEARTH_SIM_LLM_BASE_URL", "HEARTH_SIM_LLM_API_KEY",
                   "HEARTH_SIM_LLM_MODEL"):
@@ -405,7 +419,7 @@ def test_bedrock_failing_falls_back_to_the_openai_compatible_model_then_rules():
         STUB["reply"] = {"tool_calls": [{"function": {"name": "catch_up",
                          "arguments": json.dumps({"person": "Tom"})}}]}
         out = sim.plan("What did I miss?", "Tom", TOOLS)
-        assert out["planner"] == "model:fallback-1 + skill:hearth-care", out
+        assert out["planner"] == "model:fallback-1 on this machine + skill:hearth-care", out
         assert sim.LAST["error"].startswith("bedrock:"), sim.LAST
         STUB["status"] = 500
         out = sim.plan("What did I miss?", "Tom", TOOLS)

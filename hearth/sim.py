@@ -276,7 +276,13 @@ def _openai_model() -> str:
 def model_label(provider: str) -> str:
     if provider == "bedrock":
         return f"model:{os.getenv('HEARTH_BEDROCK_MODEL')} on Amazon Bedrock"
-    return f"model:{_openai_model()}"
+    from urllib.parse import urlparse
+    host = urlparse(os.getenv("HEARTH_SIM_LLM_BASE_URL")
+                    or os.getenv("HEARTH_LLM_BASE_URL") or "").hostname or ""
+    # A small open model on the same laptop is worth saying out loud: the
+    # safety is in Hearth's server, so the planner does not have to be big.
+    local = host in ("localhost", "127.0.0.1", "::1")
+    return f"model:{_openai_model()}" + (" on this machine" if local else "")
 
 
 def _timeout() -> float:
