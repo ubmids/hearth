@@ -19,6 +19,10 @@ Inserts (real footage, any format ffmpeg reads; drop them in and run again):
   n-traffic.m4a, n-tech.m4a, n-close.m4a, n-oncam.m4a
                narration in a real voice (else: macOS `say`, voice Daniel)
 
+--captions: a narration line with no recording is shown as an on-screen
+caption instead of a `say` voice, so the cut is complete with no recordings
+at all (the traffic line is dropped: its lower third already says it).
+
 Writes <take>/hearth-demo.mp4, hearth-demo.srt (captions for the upload) and <take>/cut.json (each segment, its source,
 its length, and whether it is still a placeholder). macOS only (`say`); needs
 ffmpeg and playwright.
@@ -122,10 +126,21 @@ class Cut:
         self.work.mkdir(exist_ok=True)
         self.parts = []                      # (file, record)
 
+    caption_mode = False
+    captioned: set = set()
+
     def narration(self, key) -> tuple[pathlib.Path, bool]:
         real = first(self.inserts, f"n-{key}", ("m4a", "wav", "aiff", "mp3", "caf"))
         if real:
             return real, True
+        if self.caption_mode:
+            # Silence for the reading time; the words go on screen (caption()).
+            secs = max(3.0, len(NARRATION[key].split()) / 2.6 + 1.0)
+            p = self.work / f"n-{key}-quiet.wav"
+            run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-t", f"{secs:.2f}",
+                 "-i", "anullsrc=r=48000:cl=stereo", str(p)])
+            self.captioned.add(key)
+            return p, True
         p = self.work / f"n-{key}.aiff"
         run(["say", "-v", "Daniel", "-r", "178", "-o", str(p), NARRATION[key]])
         return p, False
@@ -138,6 +153,38 @@ class Cut:
         self.parts.append((path, {"segment": name, "source": source,
                                   "seconds": round(duration(path), 2),
                                   "placeholder": placeholder}))
+
+    def caption(self, png, key) -> pathlib.Path:
+        """The card with its narration written along the bottom, in the
+        label style (ink on paper, no red: red means refused)."""
+        if key not in self.captioned or key == "close":   # the close card says it already
+            return png
+        from PIL import Image, ImageDraw, ImageFont
+        img = Image.open(png).convert("RGB")
+        d = ImageDraw.Draw(img)
+        try:
+            f = ImageFont.truetype("/System/Library/Fonts/Avenir Next Condensed.ttc", 36, index=2)
+        except OSError:
+            f = ImageFont.load_default()
+        words, lines, cur = NARRATION[key].split(), [], ""
+        for w in words:
+            t = (cur + " " + w).strip()
+            if d.textlength(t, font=f) <= 1700:
+                cur = t
+            else:
+                lines.append(cur)
+                cur = w
+        lines.append(cur)
+        lh, pad = 46, 18
+        bw = max(d.textlength(l, font=f) for l in lines) + 2 * pad
+        bh = lh * len(lines) + 2 * pad - 8
+        x, y = (W - bw) / 2, H - 20 - bh
+        d.rectangle([x, y, x + bw, y + bh], fill=(255, 255, 255), outline=(17, 17, 17), width=3)
+        for i, l in enumerate(lines):
+            d.text((x + pad, y + pad - 4 + i * lh), l, font=f, fill=(17, 17, 17))
+        out = self.work / f"{pathlib.Path(png).stem}-cap.png"
+        img.save(out)
+        return out
 
     def card(self, name, png, seconds=None, audio=None, placeholder=False, source="card"):
         out = self.work / f"{len(self.parts):02d}-{name}.mp4"
@@ -233,7 +280,7 @@ class Cut:
         return final
 
 
-def main(take: pathlib.Path, inserts: pathlib.Path, skip=()):
+def main(take: pathlib.Path, inserts: pathlib.Path, skip=(), captions=False):
     tl = json.loads((take / "timeline.json").read_text())
     ev = tl["events"]
     at = {e["kind"]: e["at"] for e in ev if e["kind"] in ("ready", "traffic-on", "traffic-off")}
@@ -246,6 +293,7 @@ def main(take: pathlib.Path, inserts: pathlib.Path, skip=()):
     assert len(ends) == 7, f"expected the 7 film scenes, got {scene_of}"
     cut = Cut(take, inserts)
     cut.skip = set(skip)
+    cut.caption_mode = captions
 
     tech_text = None
     conf = inserts / "conformance.txt"
@@ -296,6 +344,8 @@ def main(take: pathlib.Path, inserts: pathlib.Path, skip=()):
     # 0:00 the hero and the one look at the traffic.
     t0 = max(0.0, at["ready"] - 0.2)
     n, real = cut.narration("traffic")
+    if "traffic" in cut.captioned:
+        n = None                                  # the lower third says it
     cut.sim("hero", t0, ends[0], thirds("hero", t0), narr=n, narr_at=at["traffic-on"] - t0 + 0.3)
     # Why it matters: a real person, or the stats with a placeholder voice.
     clip = first(inserts, "oncam", ("mp4", "mov", "m4v"))
@@ -303,7 +353,7 @@ def main(take: pathlib.Path, inserts: pathlib.Path, skip=()):
         cut.insert("oncam", clip, third=(cut.work / "third-oncam.png", 1.0, 9.0))
     else:
         n, real = cut.narration("oncam")
-        cut.card("oncam", cut.work / ("stats.png" if real else "stats-todo.png"),
+        cut.card("oncam", cut.caption(cut.work / ("stats.png" if real else "stats-todo.png"), "oncam"),
                  audio=n, placeholder=not real, source="stats card + narration")
     # The afternoon: handover, the push, Tom's catch-up, sort it out, the order.
     cut.sim("handover", ends[0], ends[1], thirds("handover", 0))
@@ -319,7 +369,7 @@ def main(take: pathlib.Path, inserts: pathlib.Path, skip=()):
                                                      placeholder=True, source="slate")
     cut.sim("record", ends[5], ends[6], thirds("record", 0))
     n, real = cut.narration("tech")
-    cut.card("tech", cut.work / "tech.png", audio=n, placeholder=not real,
+    cut.card("tech", cut.caption(cut.work / "tech.png", "tech"), audio=n, placeholder=not real,
              source="conformance card + narration")
     n, real = cut.narration("close")
     cut.card("close", cut.work / "close.png", audio=n, placeholder=not real,
@@ -343,4 +393,5 @@ if __name__ == "__main__":
     skip = next((a.split("=", 1)[1].split(",") for a in sys.argv[1:]
                  if a.startswith("--skip=")), [])
     take = pathlib.Path(os.path.expanduser(args[0] if args else "take")).resolve()
-    main(take, pathlib.Path(os.path.expanduser(ins)).resolve() if ins else take / "inserts", skip)
+    main(take, pathlib.Path(os.path.expanduser(ins)).resolve() if ins else take / "inserts", skip,
+         captions="--captions" in sys.argv[1:])

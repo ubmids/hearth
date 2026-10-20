@@ -41,3 +41,6 @@ local-model/
 # The record's signing key and checkpoints, if a data path is inside the repo
 hearth-record.key
 *.witness.jsonl
+
+# tonight-recording stills (media stays out of git)
+video/shots/
