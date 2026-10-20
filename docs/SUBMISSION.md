@@ -185,7 +185,7 @@ Show would, calls tools over Streamable HTTP, and plays the host's part in
 checkout. The MCP traffic can be shown live beside the conversation. A language
 model stands in for Alexa's: it is given Hearth's real `tools/list` and Hearth's
 Agent Skill, and chooses every tool call; the header names the model. In the
-video it is a small open model on the laptop (Qwen2.5-VL 7B through Ollama),
+video it is a small open model on the laptop (Qwen2.5 7B Instruct through Ollama),
 which planned every filmed line correctly in one to three seconds; Amazon
 Bedrock (Converse API) or any OpenAI-compatible endpoint is one setting away.
 A small model is enough because the safety is in the server. Three things
@@ -263,7 +263,7 @@ No account or credentials are needed.
 `mcp` (spec 2025-11-25, Streamable HTTP) · `mcp-apps` · `universal-commerce-protocol`
 · `oauth2.1-pkce` · `agent-skills` · `alexa-plus` (simulated) · `alexa-skills-kit`
 (classic skill, `ask-sdk-core`, APL) · `python` · `fastapi` · `uvicorn` ·
-`ollama` + `qwen2.5-vl` (the planner in the video, on the laptop) ·
+`ollama` + `qwen2.5` (the planner in the video, on the laptop) ·
 `amazon-bedrock` (Converse API, optional planner) · `ed25519` (signed record
 checkpoints) · `ntfy` (phone push) · `piper-tts` · `amazon-polly` (optional) ·
 `playwright` (rehearsal) · `@modelcontextprotocol/conformance` (CI)

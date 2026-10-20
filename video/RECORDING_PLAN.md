@@ -1,5 +1,11 @@
 # Hearth: recording plan for tonight (Tue 20 Oct)
 
+> **Superseded 20 Oct: nothing to record.** The narrated video is built in
+> Subomi's ElevenLabs voice: `~/Desktop/hackathons/hearth-video/hearth-narrated.mp4`
+> (2:39) with `hearth-narrated.srt`, from `python3 demo/narrated_cut.py`
+> (script in `video/NARRATION.md`; upload and form steps in
+> `~/Desktop/hackathons/hearth-video/SUBMIT.md`).
+
 ## What's broken or missing (checked 20 Oct, 11:00 to 12:30 WAT)
 
 Nothing blocks the video. Every app shot is already filmed (take 5), and the

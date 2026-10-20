@@ -113,7 +113,7 @@ it cannot be is Alexa's language model. A language model stands in for Alexa's:
 it is given Hearth's real `tools/list` and Hearth's Agent Skill, and chooses
 every tool call; the header names the model. Any OpenAI-compatible endpoint
 works, including a small open model on the same laptop (the video uses
-Qwen2.5-VL 7B through Ollama: right on every filmed line, one to three seconds
+Qwen2.5 7B Instruct through Ollama: right on every filmed line, one to three seconds
 each; a model without a tool-calling API is asked for JSON instead), or Amazon
 Bedrock through the Converse API. Three things never depend on the model's
 reading, and the header says when any steps in: a question never records a
