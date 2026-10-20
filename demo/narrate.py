@@ -78,7 +78,7 @@ def build(plan, lines, voice_fn, work: pathlib.Path, final: pathlib.Path,
             L = max(need, c.get("min", 0.0))
         else:
             D = c["to"] - c["ss"]
-            L = D if c.get("fixed") else max(need, c.get("min", 0.0))
+            L = D + c.get("hold", 0.0) if c.get("fixed") else max(need, c.get("min", 0.0))
         out = work / f"{i:02d}-{c['name']}.mp4"
         cmd = ["ffmpeg", "-y", "-loglevel", "error"]
         graph = []
@@ -99,7 +99,9 @@ def build(plan, lines, voice_fn, work: pathlib.Path, final: pathlib.Path,
             cmd += ["-ss", f"{c['ss']:.3f}", "-to", f"{c['to']:.3f}", "-i", str(src)]
             fit = (f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
                    f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color={c.get('pad', '0x000000')}")
-            if c.get("fixed") or abs(L - D) < 0.05:
+            if c.get("fixed") and c.get("hold"):
+                retime = f"setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={c['hold'] + 0.1:.3f}"
+            elif c.get("fixed") or abs(L - D) < 0.05:
                 retime = "setpts=PTS-STARTPTS"
             elif L > D:
                 retime = f"setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={L - D + 0.1:.3f}"

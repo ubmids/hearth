@@ -38,17 +38,31 @@ def line(text: str, cache_dir, retake: bool = False, take: int = 0) -> pathlib.P
         data=body, method="POST",
         headers={"xi-api-key": KEY.read_text().strip(), "Content-Type": "application/json",
                  "Accept": "audio/mpeg"})
-    for attempt in range(3):
+    offline_since = None
+    for attempt in range(200):
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
-                out.write_bytes(r.read())
+                data = r.read()
+                want = r.headers.get("Content-Length")
+            if not data or (want and int(want) != len(data)):
+                raise urllib.error.URLError("short read")
+            tmp = out.with_suffix(".part")
+            tmp.write_bytes(data)
+            tmp.rename(out)                      # never cache a partial take
             break
         except urllib.error.HTTPError as e:
             msg = e.read().decode(errors="replace")[:300]
-            if e.code in (429, 500, 502, 503) and attempt < 2:
+            if e.code in (429, 500, 502, 503) and attempt < 5:
                 time.sleep(5 * (attempt + 1))
                 continue
             raise SystemExit(f"ElevenLabs {e.code}: {msg}")
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            # Offline: wait and retry for up to about two hours.
+            offline_since = offline_since or time.time()
+            if time.time() - offline_since > 7200:
+                raise SystemExit(f"ElevenLabs unreachable for 2 hours: {e}")
+            print(f"ElevenLabs unreachable ({e}); retrying in 60 s", flush=True)
+            time.sleep(60)
     led = cache / "ledger.json"
     rows = json.loads(led.read_text()) if led.exists() else []
     rows.append({"file": out.name, "chars": len(text), "text": text,
